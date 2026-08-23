@@ -92,8 +92,12 @@ let SETTINGS = {
   appr_hod_v: '1', appr_hr_v: '1',        // visitor passes
   appr_mode: 'sequence',                  // 'sequence' (HOD then HR) | 'parallel' (both at once)
   appr_hr_for_hod: '0',                   // '1' = HR may approve employee passes on behalf of the Dept Head
+  appr_hr_for_hod_v: '0',                 // same, for visitor passes
+  hr_add_users: '0',                      // '1' = HR may create users (new joiners)
 };
 const hrCanBehalf = () => SETTINGS.appr_hr_for_hod === '1';
+const hrCanBehalfV = () => SETTINGS.appr_hr_for_hod_v === '1';
+const hrCanAddUsers = () => SETTINGS.hr_add_users === '1';
 let DEPTS = [];           // [{id,name,workflow,hod_count,user_count}]
 let unsubs = [];          // active snapshot listeners for current view
 
@@ -201,7 +205,8 @@ function frame(title) {
     <aside class="side">
       <div class="brand">
         ${SETTINGS.logo_b64 ? `<img src="${SETTINGS.logo_b64}" alt="logo">` : `<div class="brand-ic">🏭</div>`}
-        <div><div class="brand-t">Gate Pass Manager</div><div class="brand-c">${esc(SETTINGS.company_name)}</div></div>
+        <div class="brand-c">${esc(SETTINGS.company_name)}</div>
+        <div class="brand-t">Gate Pass Manager</div>
       </div>
       <nav class="nav" id="nav"></nav>
       <div class="side-foot">
@@ -224,7 +229,9 @@ function frame(title) {
   </div>`;
   const nav = document.getElementById('nav');
   const h = location.hash.split('?')[0] || '#/';
-  for (const [link, label, pill] of (NAVS[me.role] || [])) {
+  const navItems = (NAVS[me.role] || []).slice();
+  if (me.role === 'hr' && hrCanAddUsers()) navItems.splice(2, 0, ['#/hr-users', '👥 Add Users']);
+  for (const [link, label, pill] of navItems) {
     const a = document.createElement('a');
     a.textContent = label;
     if (h === link) a.className = 'on';
@@ -255,13 +262,13 @@ async function loadBadges() {
       const b = await getDocs(query(C.vp, where('status', 'in', ['PENDING_HOD', 'PENDING_BOTH'])));
       set('bc-hod', [...a.docs, ...b.docs].filter(d => wantsMe(d.data(), 'dept_head') && d.data().department_id === me.department_id).length);
     } else if (me.role === 'hr') {
-      const wantHr = hrCanBehalf() ? ['PENDING_HR', 'PENDING_HOD', 'PENDING_BOTH'] : ['PENDING_HR', 'PENDING_BOTH'];
-      const a = await getDocs(query(C.gp, where('status', 'in', wantHr)));
-      const b = await getDocs(query(C.vp, where('status', 'in', ['PENDING_HR', 'PENDING_BOTH'])));
-      const mineGp = r => r.status === 'PENDING_HR'
-        || (hrCanBehalf() && r.status === 'PENDING_HOD')                    // approve on behalf of Dept Head
-        || (r.status === 'PENDING_BOTH' && (!r.hr_by || (hrCanBehalf() && !r.hod_by)));
-      set('bc-hr', a.docs.filter(d => mineGp(d.data())).length + b.docs.filter(d => wantsMe(d.data(), 'hr')).length);
+      const bhGp = hrCanBehalf(), bhVp = hrCanBehalfV();
+      const a = await getDocs(query(C.gp, where('status', 'in', bhGp ? ['PENDING_HR', 'PENDING_HOD', 'PENDING_BOTH'] : ['PENDING_HR', 'PENDING_BOTH'])));
+      const b = await getDocs(query(C.vp, where('status', 'in', bhVp ? ['PENDING_HR', 'PENDING_HOD', 'PENDING_BOTH'] : ['PENDING_HR', 'PENDING_BOTH'])));
+      const mineK = (r, bh) => r.status === 'PENDING_HR'
+        || (bh && r.status === 'PENDING_HOD')                             // approve on behalf of Dept Head
+        || (r.status === 'PENDING_BOTH' && (!r.hr_by || (bh && !r.hod_by)));
+      set('bc-hr', a.docs.filter(d => mineK(d.data(), bhGp)).length + b.docs.filter(d => mineK(d.data(), bhVp)).length);
     } else if (me.role === 'security') {
       const t = todayStr(), a = await getDocs(C.gp), b = await getDocs(C.vp);
       let n = 0;
@@ -682,8 +689,8 @@ function approvalCard(p, kind) {
   const id = `${kind}/${p.id}`;
   const prog = p.status === 'PENDING_BOTH'
     ? `<div style="margin-top:6px;font-size:12.5px;font-weight:700">${p.hod_by ? '✅ Dept Head done' : '⏳ Dept Head waiting'} · ${p.hr_by ? '✅ HR done' : '⏳ HR waiting'}</div>` : '';
-  /* HR acting on behalf of the Dept Head (employee passes only; enabled in ⚙️ Settings) */
-  const behalfOn = me && me.role === 'hr' && kind === 'gp' && hrCanBehalf();
+  /* HR acting on behalf of the Dept Head (per-kind switch in ⚙️ Settings) */
+  const behalfOn = me && me.role === 'hr' && (kind === 'gp' ? hrCanBehalf() : hrCanBehalfV());
   const hodSideOpen = p.status === 'PENDING_HOD' || (p.status === 'PENDING_BOTH' && !p.hod_by);
   const hrSideOpen = p.status === 'PENDING_HR' || (p.status === 'PENDING_BOTH' && !p.hr_by);
   const approveBtns = (me && me.role === 'hr')
@@ -737,14 +744,15 @@ async function decide(kind, id, ok, remarks, card, side) {
 
 function vApprovals() {
   const c = frame(me.role === 'dept_head' ? 'Dept Head Approvals' : 'HR Approvals');
-  const behalf = me.role === 'hr' && hrCanBehalf();
-  const wantGp = me.role === 'dept_head' ? ['PENDING_HOD', 'PENDING_BOTH'] : (behalf ? ['PENDING_HR', 'PENDING_HOD', 'PENDING_BOTH'] : ['PENDING_HR', 'PENDING_BOTH']);
-  const wantVp = me.role === 'dept_head' ? ['PENDING_HOD', 'PENDING_BOTH'] : ['PENDING_HR', 'PENDING_BOTH'];
+  const bhGp = me.role === 'hr' && hrCanBehalf(), bhVp = me.role === 'hr' && hrCanBehalfV();
+  const bhFor = kind => kind === 'gp' ? bhGp : bhVp;                       // HR covering a missing/absent Dept Head
+  const wantGp = me.role === 'dept_head' ? ['PENDING_HOD', 'PENDING_BOTH'] : (bhGp ? ['PENDING_HR', 'PENDING_HOD', 'PENDING_BOTH'] : ['PENDING_HR', 'PENDING_BOTH']);
+  const wantVp = me.role === 'dept_head' ? ['PENDING_HOD', 'PENDING_BOTH'] : (bhVp ? ['PENDING_HR', 'PENDING_HOD', 'PENDING_BOTH'] : ['PENDING_HR', 'PENDING_BOTH']);
   const wantsMe = (r, kind) => me.role === 'dept_head'
     ? (r.status === 'PENDING_HOD' || (r.status === 'PENDING_BOTH' && !r.hod_by)) && r.department_id === me.department_id
     : r.status === 'PENDING_HR'
-      || (behalf && kind === 'gp' && r.status === 'PENDING_HOD')                                  // cover a missing/absent Dept Head
-      || (r.status === 'PENDING_BOTH' && (!r.hr_by || (behalf && kind === 'gp' && !r.hod_by)));
+      || (bhFor(kind) && r.status === 'PENDING_HOD')                                    // cover a missing/absent Dept Head
+      || (r.status === 'PENDING_BOTH' && (!r.hr_by || (bhFor(kind) && !r.hod_by)));
   c.innerHTML = `<div class="section"><h2>⏳ Employee passes waiting for you (<span id="n1">…</span>)</h2><div id="pe">Loading…</div></div>
     <div class="section" style="border-left:6px solid var(--amber)"><h2>🧍 Visitor passes waiting (<span id="n2">…</span>)</h2><div id="pv">Loading…</div></div>`;
   const wire = (el, kind) => el.querySelectorAll('.appr').forEach(card => {
@@ -1124,13 +1132,68 @@ async function exportExcel(f, rows) {
 }
 
 /* ====================================================== views: admin - users */
+/* ================= bulk-upload helpers (tolerant reader for CSV *and* .xlsx) ================= */
+function splitCsvLine(line, d) {          // quote-aware single-line split
+  const out = []; let cur = '', q = false;
+  for (const ch of line) {
+    if (ch === '"') { q = !q; continue; }
+    if (ch === d && !q) { out.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
+}
+async function readUserFile(file) {       // → array-of-arrays grid, header row first
+  if (/\.xlsx$/i.test(file.name)) {
+    if (!window.ExcelJS) throw new Error('Excel reader not loaded — needs internet once, then it is cached');
+    const wb = new ExcelJS.Workbook();
+    const buf = file.arrayBuffer ? await file.arrayBuffer()
+      : await new Promise((res, rej) => { const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsArrayBuffer(file); });
+    await wb.xlsx.load(buf);
+    const ws = (wb.worksheets || wb.sheets || [])[0];
+    if (!ws) throw new Error('No sheet found in the Excel file');
+    const grid = [];
+    ws.eachRow(r => grid.push(r.values.slice(1).map(v => v == null ? '' : String(v).trim())));
+    return grid.filter(g => g.some(x => x !== ''));
+  }
+  let text = await new Promise((res, rej) => {
+    const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = () => rej(new Error('cannot read file')); r.readAsText(file);
+  });
+  text = text.replace(/^\uFEFF/, '').trim();
+  if (!text) throw new Error('The file is empty');
+  const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const delim = (rawLines[0].match(/;/g) || []).length > (rawLines[0].match(/,/g) || []).length ? ';' : ',';   // Excel in some regions saves with ;
+  return rawLines.map(l => splitCsvLine(l, delim));
+}
+const HEAD_ALIASES = {                    // accepted column names (all lowercase, spaces not _ )
+  user_id: ['user id', 'user_id', 'userid', 'id', 'emp id', 'empid', 'employee id', 'emp code', 'code', 'login id'],
+  name: ['name', 'full name', 'employee name', 'user name'],
+  password: ['password', 'pass', 'pwd'],
+  role: ['role', 'type', 'designation'],
+  department: ['department', 'dept', 'department name', 'dept name'],
+  email: ['email', 'mail', 'e mail', 'email id'],
+  mobile: ['mobile', 'mobile no', 'mobile number', 'phone', 'phone no', 'contact', 'contact no'],
+};
+const ROLE_NORM = s => {
+  const k = (s || '').toLowerCase().replace(/[^a-z]+/g, ' ').trim();
+  if (!k) return 'employee';                                                            // blank role → employee
+  if (['employee', 'emp', 'worker', 'staff', 'operator', 'labour', 'labor'].includes(k)) return 'employee';
+  if (['dept head', 'hod', 'department head', 'head', 'depthead', 'dh'].includes(k)) return 'dept_head';
+  if (['hr', 'human resources', 'human resource'].includes(k)) return 'hr';
+  if (['security', 'sec', 'guard', 'security guard', 'watchman'].includes(k)) return 'security';
+  return null;                                                                          // unknown → row reported as bad
+};
+
 function vAdminUsers() {
-  const c = frame('👥 User Management');
-  c.innerHTML = `<div class="section"><h2 id="formtitle">➕ Add new user</h2>
+  const hrMode = me.role === 'hr';        // HR gets an "add-only" version (enabled from ⚙️ Settings → Permissions)
+  const roleOpts = hrMode ? ['employee', 'dept_head', 'security'] : Object.keys(ROLE_LABEL);
+  const c = frame(hrMode ? '👥 Add Users (new joiners)' : '👥 User Management');
+  c.innerHTML = `${hrMode ? `<div class="section" style="border-left:6px solid var(--green);padding:10px 16px">✅ You can add <b>employee / Dept Head / security</b> logins here. Editing, disabling &amp; deleting users is <b>admin-only</b>.</div>` : ''}
+  <div class="section"><h2 id="formtitle">➕ Add new user</h2>
     <form id="uf"><div class="frow c3">
-      <div id="fw-uid"><label class="fl">User ID (login) *</label><input type="text" id="fu_id" placeholder="EMP101 / HOD005 / HR002" required></div>
+      <div id="fw-uid"><label class="fl">User ID (login) *</label><input type="text" id="fu_id" placeholder="EMP101 / HOD005 / SEC003" required></div>
       <div><label class="fl">Full Name *</label><input type="text" id="fname" required></div>
-      <div><label class="fl">Role *</label><select id="frole">${Object.entries(ROLE_LABEL).map(([r, l]) => `<option value="${r}">${l}</option>`).join('')}</select></div>
+      <div><label class="fl">Role *</label><select id="frole">${roleOpts.map(r => `<option value="${r}">${ROLE_LABEL[r]}</option>`).join('')}</select></div>
       <div><label class="fl">Department</label><select id="fdept"><option value="">— none —</option>
         ${DEPTS.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}</select></div>
       <div><label class="fl">Email (contact)</label><input type="text" id="femail"></div>
@@ -1139,17 +1202,18 @@ function vAdminUsers() {
     </div><div style="height:12px"></div>
     <button class="btn" type="submit" id="fub">➕ Create User</button>
     <button class="btn gray" type="button" id="fuc" style="display:none">Cancel Edit</button></form></div>
-  <div class="section"><h2>📤 Bulk upload (CSV)</h2>
-    <p class="muted small">Columns: <b>user_id,name,password,role,department,email,mobile</b> · role = employee / dept_head / hr / security · blank password → welcome123. <a id="tmpl">⬇️ Download template</a></p>
-    <div class="btnrow"><input type="file" id="csv" accept=".csv" style="flex:1;min-width:220px">
-    <button class="btn" id="upcsv">📤 Upload</button></div><p class="small" id="csvmsg"></p></div>
+  <div class="section"><h2>📤 Bulk upload users (CSV or Excel)</h2>
+    <p class="muted small">Columns: <b>user_id, name, password, role, department, email, mobile</b> · role = employee / <b>hod</b> / hr / security (short forms work: <i>emp, worker, guard…</i>) · blank/short password → welcome123.<br>
+    You can upload the <b>.csv</b> file <i>or your <b>.xlsx</b> Excel file directly</i> — after upload you get a <b>row-by-row report</b> showing exactly what was added and why anything was skipped. <a id="tmpl">⬇️ Download template</a></p>
+    <div class="btnrow"><input type="file" id="csv" accept=".csv,.xlsx" style="flex:1;min-width:220px">
+    <button class="btn" id="upcsv">📤 Upload</button><span id="csvname" class="muted small"></span></div><p class="small" id="csvmsg"></p></div>
   <div class="section"><h2>All users</h2><div class="twrap" id="ulist">Loading…</div></div>
-  <div class="section"><h2>🏬 Departments</h2>
+  ${hrMode ? '' : `<div class="section"><h2>🏬 Departments</h2>
     <div class="btnrow"><input type="text" id="dname" placeholder="New department name" style="max-width:280px">
     <button class="btn" id="dadd">Add</button></div>
     <p class="muted small">Each department can have its <b>own approval workflow</b> (or follow the global one from ⚙️ Settings).
     If a department has <b>no active Dept Head</b>, its passes automatically go straight to <b>HR</b>.</p>
-    <div id="dlist" style="margin-top:10px" class="twrap"></div></div>`;
+    <div id="dlist" style="margin-top:10px" class="twrap"></div></div>`}`;
 
   let editUid = null;
   let usersCache = [];
@@ -1164,6 +1228,8 @@ function vAdminUsers() {
     ev.preventDefault();
     const g = id => document.getElementById(id).value.trim();
     const name = g('fname'), role = g('frole'), dept = g('fdept') || null, email = g('femail'), mobile = g('fmobile'), pw = g('fpw');
+    if (hrMode && (!hrCanAddUsers() || !['employee', 'dept_head', 'security'].includes(role)))
+      return toast('HR can add only employee / Dept Head / security users (admin can switch this off in Settings).', 'err');
     if (['employee', 'dept_head'].includes(role) && !dept) return toast('Department required for employee / dept head.', 'err');
     document.getElementById('fub').disabled = true;
     try {
@@ -1195,21 +1261,23 @@ function vAdminUsers() {
     const el = document.getElementById('ulist'); if (!el) return;
     const rows = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.role + a.user_id).localeCompare(b.role + b.user_id));
     usersCache = rows;
-    el.innerHTML = `<div class="btnrow" style="margin-bottom:8px">
+    el.innerHTML = `${hrMode ? '' : `<div class="btnrow" style="margin-bottom:8px">
         <button class="btn sm red" id="bulkdel" disabled title="Delete all ticked users at once">🗑 Delete selected (0)</button>
-        <span class="muted small">☑️ Tick the boxes to select many users → delete them in one click.</span></div>
-      <table class="tbl"><tr><th style="width:34px"><input type="checkbox" id="selall" title="Select all" style="width:auto"></th><th>User ID</th><th>Name</th><th>Role</th><th>Department</th><th>Mobile</th><th>Email</th><th>Status</th><th>Actions</th></tr>
+        <span class="muted small">☑️ Tick the boxes to select many users → delete them in one click.</span></div>`}
+      <table class="tbl"><tr>${hrMode ? '' : '<th style="width:34px"><input type="checkbox" id="selall" title="Select all" style="width:auto"></th>'}<th>User ID</th><th>Name</th><th>Role</th><th>Department</th><th>Mobile</th><th>Email</th><th>Status</th>${hrMode ? '' : '<th>Actions</th>'}</tr>
       ${rows.map(u => `<tr>
-        <td><input type="checkbox" class="usel" data-sel="${u.id}" style="width:auto" ${u.user_id === 'ADMIN' ? 'disabled' : ''}></td>
+        ${hrMode ? '' : `<td><input type="checkbox" class="usel" data-sel="${u.id}" style="width:auto" ${u.user_id === 'ADMIN' ? 'disabled' : ''}></td>`}
         <td><b>${esc(u.user_id)}</b></td><td>${esc(u.name)}</td>
         <td><span class="badge ${u.role === 'dept_head' ? 'b-blue' : u.role === 'hr' ? 'b-green' : u.role === 'security' ? 'b-purple' : u.role === 'admin' ? 'b-red' : 'b-gray'}">${ROLE_LABEL[u.role]}</span></td>
         <td>${esc(deptName(u.department_id))}</td><td>${esc(u.mobile) || '—'}</td><td>${esc(u.email) || '—'}</td>
         <td><span class="badge ${u.active !== false ? 'b-green' : 'b-red'}">${u.active !== false ? 'Active' : 'Disabled'}</span></td>
-        <td class="nowrap">
+        ${hrMode ? '' : `<td class="nowrap">
           <button class="btn sm" data-e="${u.id}">✏️</button>
           ${u.user_id !== 'ADMIN' ? `<button class="btn sm gray" data-t="${u.id}">${u.active !== false ? '⛔' : '✔'}</button>
           <button class="btn sm red" data-d="${u.id}">🗑</button>` : ''}
-        </td></tr>`).join('')}</table>`;
+        </td>`}</tr>`).join('')}</table>`;
+    /* everything below (edit / disable / single & bulk delete) is admin-only */
+    if (hrMode) return;
     /* multi-select → bulk delete */
     const boxes = [...el.querySelectorAll('.usel:not([disabled])')];
     const bulkBtn = document.getElementById('bulkdel'), sa = document.getElementById('selall');
@@ -1306,7 +1374,8 @@ function vAdminUsers() {
     });
   };
 
-  document.getElementById('dadd').onclick = async () => {
+  const daddBtn = document.getElementById('dadd');      // absent in HR mode
+  if (daddBtn) daddBtn.onclick = async () => {
     const n = document.getElementById('dname').value.trim();
     if (!n) return;
     if (DEPTS.some(d => d.name.toLowerCase() === n.toLowerCase())) return toast('Department exists.', 'err');
@@ -1316,51 +1385,77 @@ function vAdminUsers() {
   };
   syncDeptCounts().then(renderDepts);
 
+  const csvInp = document.getElementById('csv');
+  csvInp.onchange = () => { document.getElementById('csvname').textContent = csvInp.files[0] ? '📄 ' + csvInp.files[0].name : ''; };
   document.getElementById('upcsv').onclick = async () => {
-    const file = document.getElementById('csv').files[0];
-    if (!file) return toast('Choose a CSV file.', 'err');
-    let text = await new Promise((res, rej) => {   // FileReader works on old browsers too
-      const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = () => rej(new Error('cannot read file')); r.readAsText(file);
-    });
-    text = text.replace(/^\uFEFF/, '');           // strip Excel BOM
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const head = lines.shift().split(',').map(h => h.trim().toLowerCase().replace(/^\uFEFF/, ''));
-    const idx = k => head.indexOf(k);
-    const deptIdx = idx('department') >= 0 ? idx('department') : idx('dept');   // accept both headers
-    let added = 0, updated = 0, errs = 0;
-    const msg = document.getElementById('csvmsg'); msg.textContent = 'Uploading…';
-    for (const [i, line] of lines.entries()) {
-      try {
-        const cols = line.split(',').map(x => x.trim());
-        const uid = (cols[idx('user_id')] || '').toUpperCase(), name = cols[idx('name')] || '';
-        const role = (cols[idx('role')] || '').toLowerCase();
-        let deptN = deptIdx >= 0 ? cols[deptIdx] : '';
-        const email = idx('email') >= 0 ? cols[idx('email')] : '', mobile = idx('mobile') >= 0 ? cols[idx('mobile')] : '';
-        const pw = (cols[idx('password')] || '') || 'welcome123';
-        if (!uid || !name || !['employee', 'dept_head', 'hr', 'security'].includes(role)) { errs++; continue; }
-        let deptId = null;
-        if (deptN) {
-          let d = DEPTS.find(x => x.name.toLowerCase() === deptN.toLowerCase());
-          if (!d) { await addDoc(C.depts, { name: deptN }); await loadDepts(); d = DEPTS.find(x => x.name.toLowerCase() === deptN.toLowerCase()); }
-          deptId = d ? d.id : null;
+    const file = csvInp.files[0];
+    if (!file) return toast('Choose your file first — CSV or Excel (.xlsx).', 'err');
+    const msg = document.getElementById('csvmsg');
+    msg.textContent = '⏳ Reading file…';
+    let added = 0, updated = 0;
+    const notes = [], bad = [];
+    try {
+      const grid = await readUserFile(file);
+      if (!grid.length) throw new Error('The file is empty');
+      const head = grid.shift().map(h => (h || '').toLowerCase().replace(/^\uFEFF/, '').replace(/[^a-z]+/g, ' ').trim());
+      const colOf = key => head.findIndex(h => HEAD_ALIASES[key].includes(h));
+      const CL = { uid: colOf('user_id'), name: colOf('name'), pw: colOf('password'), role: colOf('role'), dept: colOf('department'), email: colOf('email'), mob: colOf('mobile') };
+      if (CL.uid < 0 || CL.name < 0) throw new Error('I could not find the "user_id" and "name" columns. Best: download the template below and fill it in.');
+      const take = (cols, i) => i >= 0 && i < cols.length ? String(cols[i] || '').trim() : '';
+      for (const [ri, cols] of grid.entries()) {
+        const rowNo = ri + 2;   // +1 header row, +1 for human 1-based counting
+        const uid = take(cols, CL.uid).toUpperCase();
+        try {
+          const name = take(cols, CL.name);
+          const role = ROLE_NORM(take(cols, CL.role));
+          if (!uid) { bad.push([rowNo, '—', 'User ID is empty']); continue; }
+          if (!name) { bad.push([rowNo, uid, 'Name is empty']); continue; }
+          if (!role) { bad.push([rowNo, uid, `Role "${take(cols, CL.role)}" not understood — use employee / hod / hr / security`]); continue; }
+          let deptN = take(cols, CL.dept);
+          const email = take(cols, CL.email), mobile = take(cols, CL.mob);
+          let pw = take(cols, CL.pw);
+          if (pw && pw.length < 6) { notes.push([rowNo, uid, 'Password too short (Google needs 6+) — set to welcome123']); pw = ''; }
+          if (!pw) pw = 'welcome123';
+          let deptId = null;
+          if (deptN) {
+            let d = DEPTS.find(x => x.name.toLowerCase() === deptN.toLowerCase());
+            if (!d) { await addDoc(C.depts, { name: deptN }); await loadDepts(); d = DEPTS.find(x => x.name.toLowerCase() === deptN.toLowerCase()); notes.push([rowNo, uid, `Department "${deptN}" was new — created it`]); }
+            deptId = d ? d.id : null;
+          }
+          // existing user? UPDATE their details from this row (department fix included) — password untouched.
+          const dirDoc = await getDoc(doc(db, 'directory', uid.toLowerCase()));
+          if (dirDoc.exists() && dirDoc.data().uid) {
+            await updateDoc(doc(db, 'users', dirDoc.data().uid), { name, role, department_id: deptId, email: email || '', mobile: mobile || '' });
+            updated++;
+          } else {
+            await createUser({ user_id: uid, name, role, department_id: deptId, email, mobile, pw });
+            added++;
+          }
+          msg.textContent = `⏳ Uploading… ${ri + 1}/${grid.length}`;
+        } catch (e) {
+          console.error(e);
+          const why = e.code === 'auth/email-already-in-use' ? 'this email is already used by another user — leave the email blank or make it unique'
+            : e.code === 'auth/invalid-email' ? 'the email looks wrong — fix it or leave it blank'
+            : (e.message || 'unknown error');
+          bad.push([rowNo, uid || '—', why]);
         }
-        // existing user? UPDATE their details from this row (department fix included) — password untouched.
-        const dirDoc = await getDoc(doc(db, 'directory', uid.toLowerCase()));
-        if (dirDoc.exists() && dirDoc.data().uid) {
-          await updateDoc(doc(db, 'users', dirDoc.data().uid), { name, role, department_id: deptId, email: email || '', mobile: mobile || '' });
-          updated++;
-        } else {
-          await createUser({ user_id: uid, name, role, department_id: deptId, email, mobile, pw });
-          added++;
-        }
-        msg.textContent = `Uploading… ${added + updated + errs}/${lines.length}`;
-      } catch (e) { errs++; console.error(e); }
+      }
+    } catch (e) {
+      msg.innerHTML = `<div class="flash f-err" style="position:static;margin-top:8px">❌ Could not read this file. ${esc(e.message)}<br>
+        <span class="muted small">Tip: make your list in Excel using the <b>template</b> below, then either upload the <b>.xlsx</b> directly or File → Save As → <b>"CSV (Comma delimited)"</b>.</span></div>`;
+      return;
     }
     await syncDeptCounts();
-    vAdminUsers();                       // re-render first so the summary below stays visible
+    vAdminUsers();                       // re-render first so the report below stays visible
+    toast(`Upload complete: ${added} added, ${updated} updated${bad.length ? `, ${bad.length} skipped` : ''}.`, bad.length ? 'warn' : 'ok');
     const done = document.getElementById('csvmsg');
-    if (done) done.textContent = `Done: ${added} new added, ${updated} existing UPDATED (dept/details fixed), ${errs} bad rows skipped.`;
-    toast(`CSV complete: ${added} added, ${updated} updated.`);
+    if (done) done.innerHTML =
+      `<div style="margin-top:8px;padding:10px 12px;border-radius:10px;background:${bad.length ? '#fffbeb' : '#f0fdf4'};border:1px solid ${bad.length ? '#fcd34d' : '#bbf7d0'}">
+        ✅ <b>${added}</b> new added · 🔁 <b>${updated}</b> existing UPDATED (dept/details fixed) · ${bad.length ? `⚠️ <b>${bad.length}</b> skipped` : 'no bad rows 🎉'}</div>`
+      + (notes.length + bad.length ? `<div style="max-height:190px;overflow:auto;margin-top:8px;border:1px solid var(--line);border-radius:8px"><table class="tbl" style="margin:0"><tr><th></th><th>Row</th><th>User</th><th>What happened</th></tr>${
+        [...notes.map(n => ['🟡', ...n]), ...bad.map(b => ['🔴', ...b])]
+          .map(r => `<tr><td>${r[0]}</td><td class="nowrap">${r[1]}</td><td><b>${esc(r[2])}</b></td><td>${esc(r[3])}</td></tr>`).join('')
+      }</table></div>` : '');
   };
 }
 
@@ -1420,6 +1515,10 @@ function vAdminSettings() {
     <h3 style="margin:14px 0 4px">🧍 Visitor passes</h3>
     <label style="font-weight:600;display:inline-block;margin:4px 18px 4px 0"><input type="checkbox" id="wfHv" style="width:auto" ${vH ? 'checked' : ''}> Dept Head</label>
     <label style="font-weight:600;display:inline-block"><input type="checkbox" id="wfRv" style="width:auto" ${vR ? 'checked' : ''}> HR</label>
+    <div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px">
+      <label style="font-weight:600;display:inline-block"><input type="checkbox" id="wfBehalfV" style="width:auto" ${SETTINGS.appr_hr_for_hod_v === '1' ? 'checked' : ''}> 🤝 HR can approve <b>on behalf of the Dept Head</b> (visitors)</label>
+      <p class="muted small" style="margin:4px 0 0 24px">Same as the employee-pass option, but for visitor passes waiting at the Dept Head step.</p>
+    </div>
     <h3 style="margin:14px 0 4px">When both are required, how should it flow?</h3>
     <div class="radcard">
       <label class="${par ? '' : 'sel'}" id="lblSeq"><input type="radio" name="wfmode" id="wfModeS" ${par ? '' : 'checked'}>
@@ -1431,6 +1530,13 @@ function vAdminSettings() {
     </div>
     <div style="height:10px"></div><button class="btn" id="wfsave">💾 Save workflow</button>
     <p class="muted small">Current: <b id="wftxt">${hR && hrR ? 'Dept Head + HR' : (hR ? 'Dept Head only' : 'HR only')} · ${par ? 'parallel' : 'sequence'}</b></p></div>
+
+  <div class="section formcard" style="max-width:760px"><h2>🤝 Permissions (lend powers to HR)</h2>
+    <p class="muted small">Extra powers you can give the <b>HR</b> team. Turn OFF anytime — the change is instant.</p>
+    <label style="font-weight:600;display:inline-block"><input type="checkbox" id="permHrUsers" style="width:auto" ${SETTINGS.hr_add_users === '1' ? 'checked' : ''}> 👥 <b>HR can add users</b></label>
+    <p class="muted small" style="margin:4px 0 0 24px">When ON, HR gets an <b>"👥 Add Users"</b> menu — when a new employee / Dept Head / security guard joins, HR can create their login right away.
+    HR <b>cannot</b> edit, disable or delete users, and <b>cannot</b> create another HR or an Admin.</p>
+    <div style="height:10px"></div><button class="btn" id="permsave">💾 Save permissions</button></div>
 
   <div class="section formcard"><h2>🖼️ Company logo</h2>
     <div id="logoprev">${SETTINGS.logo_b64 ? `<img src="${SETTINGS.logo_b64}" style="max-height:70px;max-width:260px;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff">` : '<p class="muted small">No logo uploaded.</p>'}</div>
@@ -1483,8 +1589,13 @@ function vAdminSettings() {
       appr_hod_v: hv ? '1' : '0', appr_hr_v: rv ? '1' : '0',
       appr_mode: document.getElementById('wfModeP').checked ? 'parallel' : 'sequence',
       appr_hr_for_hod: document.getElementById('wfBehalf').checked ? '1' : '0',
+      appr_hr_for_hod_v: document.getElementById('wfBehalfV').checked ? '1' : '0',
     });
     toast('Approval workflow saved.');
+  };
+  document.getElementById('permsave').onclick = async () => {
+    await saveSettings({ hr_add_users: document.getElementById('permHrUsers').checked ? '1' : '0' });
+    toast('Permissions saved.' + (hrCanAddUsers() ? ' HR now sees an "👥 Add Users" menu.' : ''));
   };
   document.getElementById('logoup').onclick = () => {
     const f = document.getElementById('logofile').files[0];
@@ -1562,6 +1673,7 @@ function route(h) {
   if (h === '#/dashboard' && guard('hr', 'admin', 'dept_head')) return vDashboard();
   if (h === '#/reports' && guard('hr', 'admin', 'dept_head')) return vReports();
   if (h === '#/admin-users' && guard('admin')) return vAdminUsers();
+  if (h === '#/hr-users' && guard('hr') && hrCanAddUsers()) return vAdminUsers();
   if (h === '#/admin-settings' && guard('admin')) return vAdminSettings();
   if (h === '#/password') return vPassword();
   const c = frame('Not found'); c.innerHTML = '<div class="section">⛔ Page not found or not allowed.</div>';
