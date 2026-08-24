@@ -349,8 +349,10 @@ function showLogin(err) {
       <button class="btn" style="width:100%;padding:12px" type="submit" id="lbtn">Login →</button>
     </form>
     <div class="demo">Login ID + password are created by your admin.<br>Forgot password? Ask the admin to reset it (Users page).</div>
+    <a id="fgt" style="display:inline-block;margin-top:10px;font-size:12.5px;cursor:pointer;color:var(--blue,#2563eb)">🔐 Forgot the <b>ADMIN</b> password?</a>
     ${MADE_BY ? `<div class="footcredit" style="margin-top:14px;text-align:center">👤 ${esc(MADE_BY)}</div>` : ''}
   </div></div>`;
+  document.getElementById('fgt').onclick = () => showAdminHelp();
   document.getElementById('lf').onsubmit = async ev => {
     ev.preventDefault();
     const id = document.getElementById('uid').value.trim().toLowerCase();
@@ -377,6 +379,34 @@ function showLogin(err) {
       return;
     }
   };
+}
+
+/* ---------------------- help page: forgot the ADMIN password ---------------------- */
+function showAdminHelp() {
+  depose();
+  root.innerHTML = `
+  <div class="loginwrap"><div class="logincard" style="max-width:560px;text-align:left">
+    <div style="text-align:center;font-size:34px">🔐</div>
+    <h1 style="font-size:21px;text-align:center">Forgot the ADMIN password?</h1>
+    <p class="muted small" style="text-align:center;margin:4px 0 12px">Relax — your <b>data is safe</b> in the cloud. Only the key needs replacing.</p>
+    <h3 style="margin:12px 0 4px">🚪 Reset it from the Google console (about 3 minutes)</h3>
+    <ol class="small" style="line-height:1.85;padding-left:20px;margin:0">
+      <li>Open <b>console.firebase.google.com</b> → your project → <b>Build → Authentication → Users</b>.</li>
+      <li>Find <b>your admin email</b> (the Gmail used during setup) in the list.</li>
+      <li>At the right end of that row: <b>⋮ → Reset password</b>.</li>
+      <li>Google emails you a reset link → open it → set a <b>new password</b>.</li>
+      <li>Back here: log in with User ID <b>admin</b> + the new password. ✅</li>
+      <li>Then once inside: <b>🔑 Change Password</b> (left menu) to sync the app's own password note.</li>
+    </ol>
+    <h3 style="margin:14px 0 4px">🗝️ Have a backup ADMIN account?</h3>
+    <p class="small" style="margin:0">Log in as that account → Users → ✏️ on the main admin → set a new password → Save.
+    (No backup yet? Make one today: Users page → role <b>Admin (Owner)</b>.)</p>
+    <h3 style="margin:14px 0 4px">🚪 Also forgot the Google login?</h3>
+    <p class="small" style="margin:0">The Firebase project lives in the Gmail you used at <b>firebase.google.com</b>. Recover that Gmail first (Google's own "Forgot password"), then do the steps above.</p>
+    <div style="height:16px"></div>
+    <button class="btn" style="width:100%" id="backlogin">← Back to login</button>
+  </div></div>`;
+  document.getElementById('backlogin').onclick = () => showLogin();
 }
 
 /* ---------------------------------------------- first-time admin bootstrap */
@@ -1551,6 +1581,11 @@ function vAdminSettings() {
       The Python/LAN version of this app keeps full SMS + WhatsApp support. If you want alerts here, it needs a Firebase
       <b>Cloud Function</b> (Blaze pay-as-you-go plan) — tell me and I'll add it.</div></div>
 
+  <div class="section formcard" style="border:1px solid #86efac"><h2>💾 Backup & data safety</h2>
+    <p class="muted small">Your data already lives safely on Google's servers. For extra peace of mind, keep a <b>complete copy on this PC</b> — one Excel file with <b>every</b> pass, visitor, user, department and the settings.</p>
+    <button class="btn" id="bkup">⬇️ Download FULL BACKUP (Excel)</button>
+    <p class="muted small" style="margin-top:10px">🛡️ Golden rules: ① turn ON <b>2-Step Verification</b> for the Gmail that owns Firebase · ② keep a <b>backup ADMIN</b> account (Users page) · ③ download this backup on the <b>1st of every month</b> (records auto-delete after ${SETTINGS.retention_days} days).</p></div>
+
   <div class="section formcard"><h2>🧹 Data cleanup</h2>
     <p class="muted small">Auto-runs daily (on admin/HR login). Last run: <b>${esc(SETTINGS.last_cleanup_at || 'never')}</b></p>
     <button class="btn" id="cleanup">🧹 Run cleanup now</button></div>
@@ -1612,6 +1647,41 @@ function vAdminSettings() {
   };
   const rm = document.getElementById('logorm');
   if (rm) rm.onclick = async () => { await saveSettings({ logo_b64: '' }); toast('Logo removed.'); vAdminSettings(); };
+  document.getElementById('bkup').onclick = async () => {
+    const btn = document.getElementById('bkup'); btn.disabled = true;
+    toast('Preparing full backup…');
+    try {
+      const wb = new ExcelJS.Workbook();
+      const put = (name, cols, rows) => {
+        const ws = wb.addWorksheet(name);
+        ws.addRow(cols); try { ws.getRow(1).font = { bold: true }; } catch (e) { }
+        rows.forEach(r => ws.addRow(r));
+      };
+      const [gp, vp, us, dp] = await Promise.all([getDocs(C.gp), getDocs(C.vp), getDocs(C.users), getDocs(C.depts)]);
+      const V = (...xs) => xs.map(v => v === undefined || v === null ? '' : v);
+      put('Employee Passes', ['Pass No', 'Employee ID', 'Name', 'Department', 'Date', 'Out', 'Return', 'Type', 'Purpose', 'Reason', 'Status', 'Dept Head by', 'HR by', 'Gate OUT at', 'Gate IN at', 'Created at'],
+        gp.docs.map(d => { const p = d.data(); return V(p.pass_no, p.employee_code, p.employee_name, p.department_name, p.pass_date, p.out_time, p.return_time, p.pass_type, p.purpose, p.reason, p.status, p.hod_by, p.hr_by, p.gate_out_at, p.gate_in_at, p.created_at); }));
+      put('Visitor Passes', ['Pass No', 'Visitor', 'Mobile', 'Company', 'To Meet', 'Department', 'Date', 'Purpose', 'Vehicle', 'Persons', 'Status', 'Dept Head by', 'HR by', 'Gate IN at', 'Gate OUT at', 'Created at'],
+        vp.docs.map(d => { const p = d.data(); return V(p.pass_no, p.visitor_name, p.visitor_mobile, p.visitor_company, p.person_to_visit, p.department_name, p.pass_date, p.purpose, p.vehicle_no, p.persons, p.status, p.hod_by, p.hr_by, p.gate_in_at, p.gate_out_at, p.created_at); }));
+      put('Users', ['User ID', 'Name', 'Role', 'Department', 'Mobile', 'Email', 'Active'],
+        us.docs.map(d => { const u = d.data(); return V(u.user_id, u.name, u.role, deptName(u.department_id), u.mobile, u.email, u.active !== false ? 'yes' : 'no'); }));
+      put('Departments', ['Name', 'Users', 'Dept Heads', 'Workflow'],
+        dp.docs.map(d => { const dd = d.data(); return V(dd.name, dd.user_count || 0, dd.hod_count || 0, dd.workflow || 'global'); }));
+      const ws = wb.addWorksheet('About');
+      ws.addRow(['Factory Gate Pass Manager — FULL BACKUP']);
+      ws.addRow(['Company', SETTINGS.company_name]);
+      ws.addRow(['Taken at', nowStr()]);
+      ws.addRow(['Records kept (days)', SETTINGS.retention_days]);
+      ws.addRow(['Sheets', 'Employee Passes · Visitor Passes · Users · Departments']);
+      const buf = await wb.xlsx.writeBuffer();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      a.download = `gatepass_FULL_BACKUP_${todayStr()}.xlsx`;
+      a.click();
+      toast('Backup downloaded — keep this file safe. 👍');
+    } catch (e) { console.error(e); toast('Backup failed: ' + (e.code || e.message), 'err'); }
+    btn.disabled = false;
+  };
   document.getElementById('cleanup').onclick = async () => {
     await setDoc(C.settings, { last_cleanup: '' }, { merge: true });
     await loadSettings(); await housekeeping(); toast('Cleanup done.');
