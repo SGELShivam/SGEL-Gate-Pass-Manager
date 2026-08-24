@@ -342,7 +342,7 @@ function showLogin(err) {
     ${err ? `<div class="flash f-err" style="margin:8px 0">${esc(err)}</div>` : ''}
     <form id="lf">
       <label class="fl">User ID</label>
-      <input type="text" id="uid" placeholder="e.g. EMP001 / HOD001 / HR001" required autocomplete="username">
+      <input type="text" id="uid" placeholder="e.g. SGE001 / SEC001 / CON001" required autocomplete="username">
       <label class="fl">Password</label>
       <input type="password" id="pw" placeholder="Password" required autocomplete="current-password">
       <div style="height:16px"></div>
@@ -1191,7 +1191,7 @@ function vAdminUsers() {
   c.innerHTML = `${hrMode ? `<div class="section" style="border-left:6px solid var(--green);padding:10px 16px">✅ You can add <b>employee / Dept Head / security</b> logins here. Editing, disabling &amp; deleting users is <b>admin-only</b>.</div>` : ''}
   <div class="section"><h2 id="formtitle">➕ Add new user</h2>
     <form id="uf"><div class="frow c3">
-      <div id="fw-uid"><label class="fl">User ID (login) *</label><input type="text" id="fu_id" placeholder="EMP101 / HOD005 / SEC003" required></div>
+      <div id="fw-uid"><label class="fl">User ID (login) *</label><input type="text" id="fu_id" placeholder="SGE001 / SEC001 / CON001" required></div>
       <div><label class="fl">Full Name *</label><input type="text" id="fname" required></div>
       <div><label class="fl">Role *</label><select id="frole">${roleOpts.map(r => `<option value="${r}">${ROLE_LABEL[r]}</option>`).join('')}</select></div>
       <div><label class="fl">Department</label><select id="fdept"><option value="">— none —</option>
@@ -1218,7 +1218,7 @@ function vAdminUsers() {
   let editUid = null;
   let usersCache = [];
   document.getElementById('tmpl').onclick = () => {
-    const csv = 'user_id,name,password,role,department,email,mobile\nEMP101,Test Employee,welcome123,employee,Production,test@abc.com,9812345601\n';
+    const csv = 'user_id,name,password,role,department,email,mobile\nSGE001,Test Employee,welcome123,employee,Production,test@abc.com,9812345601\n';
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'users_template.csv'; a.click();
   };
   const resetForm = () => { editUid = null; document.getElementById('formtitle').textContent = '➕ Add new user'; document.getElementById('fw-uid').style.display = ''; document.getElementById('fpw').required = true; document.getElementById('fub').textContent = '➕ Create User'; document.getElementById('fuc').style.display = 'none'; document.getElementById('uf').reset(); };
