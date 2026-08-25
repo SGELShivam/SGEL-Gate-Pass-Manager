@@ -1279,10 +1279,11 @@ function vAdminUsers() {
         if ((await getDoc(dirRef)).exists()) return toast(`User ID ${uidInput} already exists.`, 'err');
         await createUser({ user_id: uidInput, name, role, department_id: dept, email, mobile, pw });
         syncDeptCounts().then(renderDepts);
+        renderUsers();                       // show the new user in the table immediately
         toast(`User ${uidInput} created.`);
         ev.target.reset();
       }
-    } catch (e) { toast('Error: ' + (e.code || e.message), 'err'); }
+    } catch (e) { toast(e.code === 'ghost-account' ? e.message : 'Error: ' + (e.code || e.message), 'err'); }
     document.getElementById('fub').disabled = false;
   };
 
@@ -1464,7 +1465,8 @@ function vAdminUsers() {
           msg.textContent = `⏳ Uploading… ${ri + 1}/${grid.length}`;
         } catch (e) {
           console.error(e);
-          const why = e.code === 'auth/email-already-in-use' ? 'this email is already used by another user — leave the email blank or make it unique'
+          const why = e.code === 'ghost-account' ? e.message
+            : e.code === 'auth/email-already-in-use' ? 'this email is already used by another user — leave the email blank or make it unique'
             : e.code === 'auth/invalid-email' ? 'the email looks wrong — fix it or leave it blank'
             : (e.message || 'unknown error');
           bad.push([rowNo, uid || '—', why]);
@@ -1493,8 +1495,33 @@ async function createUser({ user_id, name, role, department_id, email, mobile, p
   const authEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email || '') ? email.trim() : mailOf(user_id);
   const sec = initializeApp(CFG, 'sec-' + Date.now());
   try {
-    const cred = await createUserWithEmailAndPassword(getAuth(sec), authEmail, pw);
-    const uid = cred.user.uid;
+    let uid;
+    try {
+      const cred = await createUserWithEmailAndPassword(getAuth(sec), authEmail, pw);
+      uid = cred.user.uid;
+    } catch (e) {
+      if (e.code !== 'auth/email-already-in-use') throw e;
+      /* The email is taken. Two different cases:
+         (A) a REAL email was typed → it belongs to another user → always reject.
+         (B) auto-made pseudo email (box was blank) → it can ONLY be a "ghost key"
+             left behind by an earlier-deleted user with this SAME ID (Google keys
+             survive an in-app delete/reset; nobody else could register our private
+             app domain). Recycle it when the stored password still matches.       */
+      if (authEmail !== mailOf(user_id))
+        throw { code: 'ghost-account', message: `the email "${authEmail}" is already used by another user — leave it blank or use a different one` };
+      const sAuth = getAuth(sec);
+      try {
+        const s = await signInWithEmailAndPassword(sAuth, authEmail, pw);
+        uid = s.user.uid;
+        try { await updatePassword(s.user, pw); } catch (e2) { }
+      } catch (e2) {
+        try { await signOut(sAuth); } catch (e3) { }
+        throw {
+          code: 'ghost-account',
+          message: `an OLD login key for "${user_id}" is still lying in Google's Authentication list (left over from an earlier deleted test user). One-time fix: Firebase console → Authentication → delete the row "${authEmail}" → upload again.`,
+        };
+      }
+    }
     await setDoc(doc(db, 'users', uid), {
       user_id, name, role, department_id: department_id || null, email: email || '', auth_email: authEmail,
       mobile: mobile || '', active: true, created_at: nowStr(), created_by: me.user_id,
