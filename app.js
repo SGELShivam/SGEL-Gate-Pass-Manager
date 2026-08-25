@@ -821,7 +821,7 @@ function vGate() {
   </div>
   <div class="gsearch"><span>🔍</span><input type="text" id="gfilter" placeholder="Type name / pass no / dept / vehicle to filter the lists below…"></div>
   <div class="section" style="border-left:6px solid var(--amber);padding:12px 16px">
-    <details id="regbox"><summary style="cursor:pointer;font-size:15.5px;font-weight:800">🧍 Register a VISITOR <span class="muted small">(tap to open)</span></summary>
+    <details id="regbox"><summary style="cursor:pointer;font-size:16.5px;font-weight:800">🧍 Register a VISITOR <span class="muted small">(tap to open)</span></summary>
       <form id="vf" style="margin-top:12px"><div class="frow c3">
         <div><label class="fl">Visitor Name *</label><input type="text" id="vn" required></div>
         <div><label class="fl">Mobile</label><input type="text" id="vm"></div>
@@ -1150,10 +1150,10 @@ async function exportExcel(f, rows) {
   ws2.getCell(1, 1).value = 'Department-wise Summary'; ws2.getCell(1, 1).font = { bold: true, size: 13, color: { argb: 'FF1F3864' } };
   const heads = ['Department', 'Total Passes', 'Trips/Entries Taken', 'Total Minutes'];
   const h2 = ws2.getRow(3);
-  heads.forEach((h, i) => { const cell = h2.getCell(i + 1); cell.value = h; cell. = { bold: true, color: { argb: 'FFFFFFFF' } }; cell.fill = headFill; cell.border = border; ws2.getColumn(i + 1).width = 22; });
+  heads.forEach((h, i) => { const cell = h2.getCell(i + 1); cell.value = h; cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }; cell.fill = headFill; cell.border = border; ws2.getColumn(i + 1).width = 22; });
   Object.keys(agg).sort().forEach(d => { const r = ws2.addRow([d, agg[d].total, agg[d].trips, agg[d].mins]); r.eachCell(c => c.border = border); });
   const tr = ws2.addRow(['ALL DEPARTMENTS', ...['total', 'trips', 'mins'].map(k => Object.values(agg).reduce((a, x) => a + x[k], 0))]);
-  tr. = { bold: true }; tr.eachCell(c => c.border = border);
+  tr.font = { bold: true }; tr.eachCell(c => c.border = border);
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
@@ -1564,7 +1564,7 @@ function vAdminSettings() {
     <p class="muted small">Choose who must approve. <b>At least one approver must stay selected</b> in each group.
     Departments can override this on the 👥 Users page.</p>
     <h3 style="margin:14px 0 4px">👷 Employee passes</h3>
-    <label style="-weight:600;display:inline-block;margin:4px 18px 4px 0"><input type="checkbox" id="wfH" style="width:auto" ${hR ? 'checked' : ''}> Dept Head</label>
+    <label style="font-weight:600;display:inline-block;margin:4px 18px 4px 0"><input type="checkbox" id="wfH" style="width:auto" ${hR ? 'checked' : ''}> Dept Head</label>
     <label style="font-weight:600;display:inline-block"><input type="checkbox" id="wfR" style="width:auto" ${hrR ? 'checked' : ''}> HR</label>
     <div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px">
       <label style="font-weight:600;display:inline-block"><input type="checkbox" id="wfBehalf" style="width:auto" ${SETTINGS.appr_hr_for_hod === '1' ? 'checked' : ''}> 🤝 HR can approve <b>on behalf of the Dept Head</b></label>
