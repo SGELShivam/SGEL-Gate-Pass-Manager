@@ -210,6 +210,7 @@ function frame(title) {
       </div>
       <nav class="nav" id="nav"></nav>
       <div class="side-foot">
+        <a class="installbtn" style="display:none" onclick="installApp()">📱 Install App</a>
         <a onclick="location.hash='#/password'">🔑 Change Password</a>
         <a id="logout">↩️ Logout</a>
       </div>
@@ -240,6 +241,7 @@ function frame(title) {
     nav.appendChild(a);
   }
   document.getElementById('logout').onclick = async () => { await signOut(auth); location.hash = '#/login'; };
+  paintInstallBtns();
   const bell = document.getElementById('bell');
   if (bell) { paintBell(); bell.onclick = async () => {
     if (!window.Notification) return;
@@ -348,11 +350,13 @@ function showLogin(err) {
       <div style="height:16px"></div>
       <button class="btn" style="width:100%;padding:12px" type="submit" id="lbtn">Login →</button>
     </form>
+    <button type="button" class="btn gray installbtn" style="display:none;width:100%;margin-top:12px" onclick="installApp()">📱 Install App on this phone / PC</button>
     <div class="demo">Login ID + password are created by your admin.<br>Forgot password? Ask the admin to reset it (Users page).</div>
     <a id="fgt" style="display:inline-block;margin-top:10px;font-size:12.5px;cursor:pointer;color:var(--blue,#2563eb)">🔐 Forgot the <b>ADMIN</b> password?</a>
     ${MADE_BY ? `<div class="footcredit" style="margin-top:14px;text-align:center">👤 ${esc(MADE_BY)}</div>` : ''}
   </div></div>`;
   document.getElementById('fgt').onclick = () => showAdminHelp();
+  paintInstallBtns();
   document.getElementById('lf').onsubmit = async ev => {
     ev.preventDefault();
     const id = document.getElementById('uid').value.trim().toLowerCase();
@@ -1800,3 +1804,22 @@ onAuthStateChanged(auth, async u => {
 });
 
 loadSettings().catch(() => { });
+
+/* --------------------------------------------------------------- 📱 install as an app (PWA) */
+// Lets phones/PCs add a real home-screen icon + full-screen app window (no Play Store needed).
+let deferredInstall = null;
+function paintInstallBtns() {   // show the "Install App" buttons only when the browser allows installing
+  document.querySelectorAll('.installbtn').forEach(b => b.style.display = deferredInstall ? '' : 'none');
+}
+window.installApp = async () => {
+  if (!deferredInstall) return;
+  deferredInstall.prompt();
+  try { await deferredInstall.userChoice; } catch (e) { }
+  deferredInstall = null; paintInstallBtns();
+};
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; paintInstallBtns(); });
+window.addEventListener('appinstalled', () => { deferredInstall = null; paintInstallBtns(); });
+// Service worker = required for install + keeps the app shell fast.
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => { }));
+}

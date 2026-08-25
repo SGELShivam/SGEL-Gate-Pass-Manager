@@ -1,0 +1,16 @@
+{
+  "name": "Factory Gate Pass Manager",
+  "short_name": "Gate Pass",
+  "description": "Digital gate passes for employees & visitors — one-click approvals, live gate console, Excel reports.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b1526",
+  "theme_color": "#0b1526",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
