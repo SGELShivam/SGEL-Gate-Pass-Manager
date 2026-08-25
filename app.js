@@ -867,16 +867,17 @@ function vGate() {
   const today = todayStr();
   const canDelete = p => PENDING.includes(p.status) && ['security', 'admin'].includes(me.role);
   const delBtn = (kind, p) => canDelete(p) ? ` <button class="btn sm red" data-g="${kind}-del" data-id="${p.id}" title="Delete this entry (possible only before approval)">🗑 Delete</button>` : '';
+  const viewL = (kind, p) => `<a class="btn sm gray" href="#/pass/${kind}/${p.id}" title="See full details — who approved, remarks, timings">👁 View</a>`;
   const gateBtn = (kind, p) => {
     if (kind === 'gp') {
-      if (p.status === 'APPROVED' && p.pass_date === today) return `<button class="btn big green" data-g="gp-out" data-id="${p.id}">OUT →</button>`;
-      if (p.status === 'OUT' && p.pass_type === 'returnable') return `<button class="btn xl" data-g="gp-in" data-id="${p.id}">← IN</button>`;
-      if (p.status === 'OUT') return `<span class="badge b-gray">Early exit — no return</span>`;
+      if (p.status === 'APPROVED' && p.pass_date === today) return `<span class="gact">${viewL(kind, p)} <button class="btn big green" data-g="gp-out" data-id="${p.id}">OUT →</button></span>`;
+      if (p.status === 'OUT' && p.pass_type === 'returnable') return `<span class="gact">${viewL(kind, p)} <button class="btn xl" data-g="gp-in" data-id="${p.id}">← IN</button></span>`;
+      if (p.status === 'OUT') return `<span class="gact">${viewL(kind, p)} <span class="badge b-gray">Early exit — no return</span></span>`;
     } else {
-      if (p.status === 'APPROVED' && p.pass_date === today) return `<button class="btn big green" data-g="vp-in" data-id="${p.id}">IN →</button>`;
-      if (p.status === 'VISITING') return `<button class="btn xl" data-g="vp-out" data-id="${p.id}">← OUT</button>`;
+      if (p.status === 'APPROVED' && p.pass_date === today) return `<span class="gact">${viewL(kind, p)} <button class="btn big green" data-g="vp-in" data-id="${p.id}">IN →</button></span>`;
+      if (p.status === 'VISITING') return `<span class="gact">${viewL(kind, p)} <button class="btn xl" data-g="vp-out" data-id="${p.id}">← OUT</button></span>`;
     }
-    return `<span>${delBtn(kind, p)}<a class="btn sm gray" href="#/pass/${kind}/${p.id}">View</a></span>`;
+    return `<span class="gact">${delBtn(kind, p)}${viewL(kind, p)}</span>`;
   };
 
   document.body.onclick = async ev => {
