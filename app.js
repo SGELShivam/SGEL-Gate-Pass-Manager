@@ -925,8 +925,8 @@ function vGate() {
         <div class="ghead"><h2>🧍 Visitors — waiting / expected</h2><span class="gcount">${wait.length + ready.length}</span></div>
         ${wait.map(p => vRow(p, badge(p.status))).join('')}${ready.map(p => vRow(p, '<span class="badge b-green">Approved</span>')).join('') || (!wait.length ? '<p class="gempty">No visitors waiting or expected.</p>' : '')}
         ${inside.length ? '<div class="ghead" style="margin-top:14px"><h2>🏢 Visitors inside now</h2><span class="gcount">' + inside.length + '</span></div>' + inside.map(p => vRow(p)).join('') : ''}
-        ${left.length ? `<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700">↩️ Left today (${left.length})</summary><table class="tbl" style="margin-top:8px"><tr><th>Pass</th><th>Visitor</th><th>Met</th><th>In</th><th>Out</th></tr>
-          ${left.map(p => `<tr class="vflt"><td><b>${esc(p.pass_no)}</b></td><td>${esc(p.visitor_name)}</td><td>${esc(p.person_to_visit)}</td><td>${fmtDT(p.gate_in_at)}</td><td>${fmtDT(p.gate_out_at)}</td></tr>`).join('')}</table></details>` : ''}
+        ${left.length ? `<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700">↩️ Left today (${left.length})</summary><table class="tbl" style="margin-top:8px"><tr><th>Pass</th><th>Visitor</th><th>Met</th><th>In</th><th>Out</th><th></th></tr>
+          ${left.map(p => `<tr class="vflt"><td><b>${esc(p.pass_no)}</b></td><td>${esc(p.visitor_name)}</td><td>${esc(p.person_to_visit)}</td><td>${fmtDT(p.gate_in_at)}</td><td>${fmtDT(p.gate_out_at)}</td><td class="nowrap">${viewL('vp', p)}</td></tr>`).join('')}</table></details>` : ''}
       </div>`;
   };
 
@@ -958,8 +958,8 @@ function vGate() {
       </div>
       <div class="section">
         <details><summary style="cursor:pointer;font-weight:700">↩️ Completed today (${closed.length}) · ⏳ Pending (${waitp.length})</summary>
-        ${closed.length ? `<table class="tbl" style="margin-top:8px"><tr><th>Pass</th><th>Employee</th><th>Dept</th><th>Out</th><th>In</th></tr>
-          ${closed.map(p => `<tr class="vflt"><td><b>${esc(p.pass_no)}</b></td><td>${esc(p.employee_name)}</td><td>${esc(p.department_name)}</td><td>${fmtDT(p.gate_out_at)}</td><td>${fmtDT(p.gate_in_at) || '—'}</td></tr>`).join('')}</table>` : '<p class="gempty">None yet.</p>'}
+        ${closed.length ? `<table class="tbl" style="margin-top:8px"><tr><th>Pass</th><th>Employee</th><th>Dept</th><th>Out</th><th>In</th><th></th></tr>
+          ${closed.map(p => `<tr class="vflt"><td><b>${esc(p.pass_no)}</b></td><td>${esc(p.employee_name)}</td><td>${esc(p.department_name)}</td><td>${fmtDT(p.gate_out_at)}</td><td>${fmtDT(p.gate_in_at) || '—'}</td><td class="nowrap">${viewL('gp', p)}</td></tr>`).join('')}</table>` : '<p class="gempty">None yet.</p>'}
         ${waitp.length ? `<table class="tbl" style="margin-top:8px"><tr><th>Pass</th><th>Employee</th><th>Status</th><th></th></tr>
           ${waitp.map(p => `<tr class="vflt"><td><b>${esc(p.pass_no)}</b></td><td>${esc(p.employee_name)}</td><td>${badge(p.status)}</td><td class="nowrap">${delBtn('gp', p)}<a class="btn sm gray" href="#/pass/gp/${p.id}">View</a></td></tr>`).join('')}</table>` : ''}
         </details>
