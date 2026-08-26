@@ -595,12 +595,18 @@ function vNewPass() {
     <a class="btn gray" href="#/my">Cancel</a></form></div>`;
   const tgl = () => { const ret = document.getElementById('ptype').value === 'returnable'; document.getElementById('retw').style.display = ret ? '' : 'none'; document.getElementById('ret').required = ret; };
   document.getElementById('ptype').onchange = tgl; tgl();
+  // ⏰ time rules: for TODAY only now-or-later can be picked (stops back-dated slips)
+  const pdateEl = document.getElementById('pdate'), outEl = document.getElementById('out'), retEl = document.getElementById('ret');
+  const updTimeMin = () => { outEl.min = pdateEl.value === todayStr() ? nowStr().slice(11) : ''; };
+  pdateEl.onchange = updTimeMin; updTimeMin();
+  outEl.onchange = () => { retEl.min = outEl.value || ''; };   // return can only come after out
   document.getElementById('nf').onsubmit = async ev => {
     ev.preventDefault();
     const ptype = document.getElementById('ptype').value, purpose = document.getElementById('purpose').value;
     const date = document.getElementById('pdate').value, out = document.getElementById('out').value;
     let ret = document.getElementById('ret').value || null, reason = document.getElementById('reason').value.trim();
     if (date < todayStr()) return toast('Pass date cannot be in the past.', 'err');
+    if (date === todayStr() && out < nowStr().slice(11)) return toast('Out time cannot be in the past (current time is ' + nowStr().slice(11) + '). Please choose now or a later time.', 'err');
     if (!reason) return toast('Reason is required.', 'err');
     if (ptype === 'returnable' && (!ret || ret <= out)) return toast('Return time must be after out time.', 'err');
     if (ptype === 'early_exit') ret = null;
