@@ -1231,6 +1231,8 @@ function vAdminUsers() {
   const c = frame(hrMode ? '👥 Add Users (new joiners)' : '👥 User Management');
   c.innerHTML = `${hrMode ? `<div class="section" style="border-left:6px solid var(--green);padding:10px 16px">✅ You can add <b>employee / Dept Head / security</b> logins here. Editing, disabling &amp; deleting users is <b>admin-only</b>.</div>` : ''}
   <div class="section"><h2 id="formtitle">➕ Add new user</h2>
+    <div id="uok" class="flash f-ok" style="display:none;margin-bottom:10px"></div>
+    <div id="uerr" class="flash f-err" style="display:none;margin-bottom:10px"></div>
     <form id="uf"><div class="frow c3">
       <div id="fw-uid"><label class="fl">User ID (login) *</label><input type="text" id="fu_id" placeholder="SGE001 / SEC001 / CON001" required></div>
       <div><label class="fl">Full Name *</label><input type="text" id="fname" required></div>
@@ -1262,7 +1264,13 @@ function vAdminUsers() {
     const csv = 'user_id,name,password,role,department,email,mobile\nSGE001,Test Employee,welcome123,employee,Production,test@abc.com,9812345601\n';
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'users_template.csv'; a.click();
   };
-  const resetForm = () => { editUid = null; document.getElementById('formtitle').textContent = '➕ Add new user'; document.getElementById('fw-uid').style.display = ''; document.getElementById('fpw').required = true; document.getElementById('fub').textContent = '➕ Create User'; document.getElementById('fuc').style.display = 'none'; document.getElementById('uf').reset(); };
+  const resetForm = (keepMsg) => {
+    editUid = null; document.getElementById('formtitle').textContent = '➕ Add new user';
+    document.getElementById('fw-uid').style.display = ''; document.getElementById('fpw').required = true;
+    document.getElementById('fub').textContent = '➕ Create User'; document.getElementById('fuc').style.display = 'none';
+    document.getElementById('uf').reset();
+    if (!keepMsg) { document.getElementById('uok').style.display = 'none'; document.getElementById('uerr').style.display = 'none'; }
+  };
   document.getElementById('fuc').onclick = resetForm;
 
   document.getElementById('uf').onsubmit = async ev => {
@@ -1276,13 +1284,27 @@ function vAdminUsers() {
     try {
       if (editUid) {  // edit existing
         const patch = { name, role, department_id: dept, email, mobile };
-        if (pw) { // reset pw too
-          try { await resetUserPw(editUid, pw); } catch (e) { toast('Profile saved, but password reset failed: ' + e.message, 'err'); }
+        if (pw) { // admin is also resetting the password — do this FIRST, and be LOUD if it fails
+          const errBox = document.getElementById('uerr');
+          if (pw.length < 6) {
+            errBox.style.display = ''; errBox.textContent = '⚠️ Password must be at least 6 characters. Nothing was saved — type a longer password and press Save again.';
+            document.getElementById('fub').disabled = false; return;
+          }
+          try { await resetUserPw(editUid, pw); }
+          catch (e) {
+            errBox.style.display = ''; errBox.textContent = '⚠️ Password NOT changed: ' + (e.friendly || e.message) + ' — Profile details were also not saved. Fix this and press 💾 Save Changes again.';
+            document.getElementById('fub').disabled = false; return;
+          }
         }
         await updateDoc(doc(db, 'users', editUid), patch);
         syncDeptCounts().then(renderDepts);
-        toast('User updated.');
-        resetForm();
+        if (pw) {   // staying green confirmation — shows the new password so admin can note it down
+          const who = document.getElementById('formtitle').textContent.replace('✏️ Edit user: ', '');
+          resetForm(true);
+          const okBox = document.getElementById('uok'); okBox.style.display = '';
+          okBox.innerHTML = '✅ <b>Password changed for ' + esc(who) + '</b> — new login password: <b>' + esc(pw) + '</b> &nbsp;(note it down / tell the user in person — you cannot see it again).';
+          toast('Password changed for ' + who + '.');
+        } else { toast('User updated.'); resetForm(); }
       } else {
         const uidInput = g('fu_id').toUpperCase();
         if (!uidInput) return toast('User ID required.', 'err');
@@ -1291,6 +1313,7 @@ function vAdminUsers() {
         await createUser({ user_id: uidInput, name, role, department_id: dept, email, mobile, pw });
         syncDeptCounts().then(renderDepts);
         renderUsers();                       // show the new user in the table immediately
+        document.getElementById('uok').style.display = 'none'; document.getElementById('uerr').style.display = 'none';
         toast(`User ${uidInput} created.`);
         ev.target.reset();
       }
@@ -1354,7 +1377,8 @@ function vAdminUsers() {
       const u = rows.find(x => x.id === b.dataset.e); editUid = u.id;
       document.getElementById('formtitle').textContent = '✏️ Edit user: ' + u.user_id;
       document.getElementById('fw-uid').style.display = 'none';
-      document.getElementById('fpw').required = false; document.getElementById('fpw').placeholder = 'new password (blank = unchanged)';
+      document.getElementById('fpw').required = false; document.getElementById('fpw').placeholder = 'new password, min 6 (blank = unchanged)';
+      document.getElementById('uok').style.display = 'none'; document.getElementById('uerr').style.display = 'none';
       document.getElementById('fname').value = u.name; document.getElementById('frole').value = u.role;
       document.getElementById('fdept').value = u.department_id || '';
       document.getElementById('femail').value = u.email || ''; document.getElementById('fmobile').value = u.mobile || '';
@@ -1546,12 +1570,24 @@ async function createUser({ user_id, name, role, department_id, email, mobile, p
 async function resetUserPw(uid, newPw) {
   const prof = (await getDoc(doc(db, 'users', uid))).data();
   const cred = await getDoc(doc(db, 'creds', uid));
-  if (!cred.exists() || !cred.data().pw) throw new Error('no stored password for this account');
+  if (!cred.exists() || !cred.data().pw) {
+    const e = new Error('this account has no stored password record (old/incomplete account). One-time fix: 🗑 delete this user and add him again with a password.');
+    e.friendly = e.message; throw e;
+  }
   const sec = initializeApp(CFG, 'sec-' + Date.now());
   try {
     const s = getAuth(sec);
-    const sign = await signInWithEmailAndPassword(s, prof.auth_email || mailOf(prof.user_id), cred.data().pw);
-    await updatePassword(sign.user, newPw);
+    let sign;
+    try { sign = await signInWithEmailAndPassword(s, prof.auth_email || mailOf(prof.user_id), cred.data().pw); }
+    catch (e1) {
+      e1.friendly = 'could not open this login account at Google (' + (e1.code || e1.message) + '). One-time fix: 🗑 delete this user and add him again.';
+      throw e1;
+    }
+    try { await updatePassword(sign.user, newPw); }
+    catch (e2) {
+      e2.friendly = (e2.code === 'auth/weak-password') ? 'password too weak — use at least 6 characters.' : ('Google rejected the new password: ' + (e2.code || e2.message));
+      throw e2;
+    }
     await setDoc(doc(db, 'creds', uid), { pw: newPw });
     await signOut(s);
   } finally { try { await deleteApp(sec); } catch (e) { } }
