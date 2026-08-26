@@ -1302,7 +1302,7 @@ function vAdminUsers() {
           const who = document.getElementById('formtitle').textContent.replace('✏️ Edit user: ', '');
           resetForm(true);
           const okBox = document.getElementById('uok'); okBox.style.display = '';
-          okBox.innerHTML = '✅ <b>Password changed for ' + esc(who) + '</b> — new login password: <b>' + esc(pw) + '</b> &nbsp;(note it down / tell the user in person — you cannot see it again).';
+          okBox.innerHTML = '✅ <b>Password changed for ' + esc(who) + ' — VERIFIED with a test login ✓</b><br>New login password: <b>' + esc(pw) + '</b> &nbsp;(note it down / tell the user in person — you cannot see it again).';
           toast('Password changed for ' + who + '.');
         } else { toast('User updated.'); resetForm(); }
       } else {
@@ -1317,7 +1317,10 @@ function vAdminUsers() {
         toast(`User ${uidInput} created.`);
         ev.target.reset();
       }
-    } catch (e) { toast(e.code === 'ghost-account' ? e.message : 'Error: ' + (e.code || e.message), 'err'); }
+    } catch (e) {
+      toast(e.code === 'ghost-account' ? e.message : 'Error: ' + (e.code || e.message), 'err');
+      if (editUid) { const eb = document.getElementById('uerr'); eb.style.display = ''; eb.textContent = '⚠️ Save FAILED: ' + (e.friendly || e.code || e.message) + ' — nothing was saved. Fix this and press 💾 Save Changes again.'; }
+    }
     document.getElementById('fub').disabled = false;
   };
 
@@ -1588,8 +1591,20 @@ async function resetUserPw(uid, newPw) {
       e2.friendly = (e2.code === 'auth/weak-password') ? 'password too weak — use at least 6 characters.' : ('Google rejected the new password: ' + (e2.code || e2.message));
       throw e2;
     }
-    await setDoc(doc(db, 'creds', uid), { pw: newPw });
-    await signOut(s);
+    try { await setDoc(doc(db, 'creds', uid), { pw: newPw }); }
+    catch (e3) {
+      e3.friendly = 'password is ALREADY changed at Google ✅ (user can login with the new one) but the app could not save its own record: ' + (e3.code || e3.message) + '. One-time fix: re-publish the latest security rules (see FIREBASE SETUP.html → step 4 → Publish).';
+      throw e3;
+    }
+    // final proof: sign in with the NEW password — green button only if this works
+    try {
+      const v = await signInWithEmailAndPassword(s, prof.auth_email || mailOf(prof.user_id), newPw);
+      if (!v || !v.user) throw new Error('no session');
+      await signOut(s);
+    } catch (e4) {
+      e4.friendly = 'password save self-check failed: ' + (e4.code || e4.message) + ' — try once more; if it repeats, delete this user and add him again.';
+      throw e4;
+    }
   } finally { try { await deleteApp(sec); } catch (e) { } }
 }
 
