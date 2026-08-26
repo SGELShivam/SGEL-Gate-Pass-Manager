@@ -74,7 +74,7 @@ const APP_NAME = 'Factory Gate Pass Manager';
 const MADE_BY = 'Made by Shivam';
 /* VERSION → shown on the login page + under the sidebar name.
    Bump it with every new ZIP (e.g. v26.08.27) so you can SEE the update live. */
-const APP_VERSION = 'v26.08.26';
+const APP_VERSION = 'v26.08.26-b';
 
 const STATUS = {
   PENDING_HOD: ['Pending Dept Head', 'b-amber'], PENDING_HR: ['Pending HR', 'b-blue'],
@@ -295,7 +295,7 @@ function beep() {
     o.connect(g); g.connect(ctx.destination);
     o.type = 'sine'; o.frequency.value = 880;
     g.gain.setValueAtTime(0.07, ctx.currentTime);
-    o.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.18);
+    o.frequency.exponenalRampToValueAtTime(440, ctx.currentTime + 0.18);
     g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
     o.start(); o.stop(ctx.currentTime + 0.42);
     setTimeout(() => { try { const o2 = ctx.createOscillator(), g2 = ctx.createGain(); o2.connect(g2); g2.connect(ctx.destination); o2.frequency.value = 1320; g2.gain.setValueAtTime(0.05, ctx.currentTime); g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25); o2.start(); o2.stop(ctx.currentTime + 0.27); } catch (e) { } }, 180);
@@ -1271,7 +1271,7 @@ function vAdminUsers() {
   };
   const resetForm = (keepMsg) => {
     editUid = null; document.getElementById('formtitle').textContent = '➕ Add new user';
-    document.getElementById('fw-uid').style.display = ''; document.getElementById('fpw').required = true;
+    document.getElementById('fw-uid').style.display = ''; document.getElementById('fu_id').required = true; document.getElementById('fpw').required = true;
     document.getElementById('fub').textContent = '➕ Create User'; document.getElementById('fuc').style.display = 'none';
     document.getElementById('uf').reset();
     if (!keepMsg) { document.getElementById('uok').style.display = 'none'; document.getElementById('uerr').style.display = 'none'; }
@@ -1389,6 +1389,7 @@ function vAdminUsers() {
       const u = rows.find(x => x.id === b.dataset.e); editUid = u.id;
       document.getElementById('formtitle').textContent = '✏️ Edit user: ' + u.user_id;
       document.getElementById('fw-uid').style.display = 'none';
+      document.getElementById('fu_id').required = false;   // hidden box must not block Save in Chrome!
       document.getElementById('fpw').required = false; document.getElementById('fpw').placeholder = 'new password, min 6 (blank = unchanged)';
       document.getElementById('uok').style.display = 'none'; document.getElementById('uerr').style.display = 'none';
       document.getElementById('fname').value = u.name; document.getElementById('frole').value = u.role;
