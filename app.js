@@ -72,6 +72,9 @@ function toast(msg, type = 'ok') {
    ============================================================================ */
 const APP_NAME = 'Factory Gate Pass Manager';
 const MADE_BY = 'Made by Shivam';
+/* VERSION → shown on the login page + under the sidebar name.
+   Bump it with every new ZIP (e.g. v26.08.27) so you can SEE the update live. */
+const APP_VERSION = 'v26.08.26';
 
 const STATUS = {
   PENDING_HOD: ['Pending Dept Head', 'b-amber'], PENDING_HR: ['Pending HR', 'b-blue'],
@@ -207,6 +210,7 @@ function frame(title) {
         ${SETTINGS.logo_b64 ? `<img src="${SETTINGS.logo_b64}" alt="logo">` : `<div class="brand-ic">🏭</div>`}
         <div class="brand-c">${esc(SETTINGS.company_name)}</div>
         <div class="brand-t">Gate Pass Manager</div>
+        <div style="font-size:10.5px;color:#5b7194;margin-top:2px;letter-spacing:.5px">${APP_VERSION}</div>
       </div>
       <nav class="nav" id="nav"></nav>
       <div class="side-foot">
@@ -354,6 +358,7 @@ function showLogin(err) {
     <div class="demo">Login ID + password are created by your admin.<br>Forgot password? Ask the admin to reset it (Users page).</div>
     <a id="fgt" style="display:inline-block;margin-top:10px;font-size:12.5px;cursor:pointer;color:var(--blue,#2563eb)">🔐 Forgot the <b>ADMIN</b> password?</a>
     ${MADE_BY ? `<div class="footcredit" style="margin-top:14px;text-align:center">👤 ${esc(MADE_BY)}</div>` : ''}
+    <div style="margin-top:8px;text-align:center;font-size:11.5px;color:var(--sub)">${APP_VERSION}</div>
   </div></div>`;
   document.getElementById('fgt').onclick = () => showAdminHelp();
   paintInstallBtns();
@@ -1307,9 +1312,13 @@ function vAdminUsers() {
         } else { toast('User updated.'); resetForm(); }
       } else {
         const uidInput = g('fu_id').toUpperCase();
-        if (!uidInput) return toast('User ID required.', 'err');
+        if (!uidInput) { const eb = document.getElementById('uerr'); eb.style.display = ''; eb.textContent = '⚠️ User ID is required.'; return; }
         const dirRef = doc(db, 'directory', uidInput.toLowerCase());
-        if ((await getDoc(dirRef)).exists()) return toast(`User ID ${uidInput} already exists.`, 'err');
+        if ((await getDoc(dirRef)).exists()) {
+          const eb = document.getElementById('uerr'); eb.style.display = '';
+          eb.innerHTML = '⚠️ User ID <b>' + esc(uidInput) + ' already exists.</b> To reset his password, use the <b>✏️ pencil</b> on his row in the list below — do not create a new user.';
+          toast(`User ID ${uidInput} already exists.`, 'err'); return;
+        }
         await createUser({ user_id: uidInput, name, role, department_id: dept, email, mobile, pw });
         syncDeptCounts().then(renderDepts);
         renderUsers();                       // show the new user in the table immediately
@@ -1319,9 +1328,9 @@ function vAdminUsers() {
       }
     } catch (e) {
       toast(e.code === 'ghost-account' ? e.message : 'Error: ' + (e.code || e.message), 'err');
-      if (editUid) { const eb = document.getElementById('uerr'); eb.style.display = ''; eb.textContent = '⚠️ Save FAILED: ' + (e.friendly || e.code || e.message) + ' — nothing was saved. Fix this and press 💾 Save Changes again.'; }
-    }
-    document.getElementById('fub').disabled = false;
+      const eb = document.getElementById('uerr'); eb.style.display = '';
+      eb.textContent = '⚠️ ' + (e.code === 'ghost-account' ? e.message : 'Save FAILED: ' + (e.friendly || e.code || e.message) + ' — nothing was saved. Fix this and press Save again.');
+    } finally { document.getElementById('fub').disabled = false; }   // button can never get stuck
   };
 
   async function renderUsers() {
