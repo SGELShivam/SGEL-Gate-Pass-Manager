@@ -62,6 +62,22 @@ function toast(msg, type = 'ok') {
   setTimeout(() => f.remove(), 4200);
 }
 
+/* turn a raw database error into plain staff-friendly words + the fix */
+function explainErr(e) {
+  const s = String(e && (e.code || e.message || e) || '');
+  if (/permission.denied|PERMISSION_DENIED|insufficient permissions/i.test(s))
+    return ['<b>The online database REFUSED to save (old security rules are still active).</b>',
+      'Owner/Admin 2-minute fix: open <b>FIREBASE SETUP.html</b> on the owner\'s computer → <b>Step 4</b> → <b>Copy</b> → console.firebase.google.com → <b>Firestore Database → Rules</b> → select-all, delete, paste → <b>Publish</b>. Then refresh this page and try again.'];
+  if (/unavailable|network|offline|failed to fetch|timed out/i.test(s))
+    return ['<b>Could not reach the database (internet / Firebase down).</b>', 'Check the internet connection, wait a minute, and try again.'];
+  return ['<b>Could not save.</b> Reason: ' + esc(s.slice(0, 160) || 'unknown'), 'Take a screenshot of this red box and send it to the app maker.'];
+}
+/* last-resort net — a refused save must NEVER fail silently again */
+window.addEventListener('unhandledrejection', ev => {
+  const [t, f] = explainErr(ev.reason);
+  toast('❌ ' + (t + ' ' + f).replace(/<[^>]+>/g, ''), 'err');
+})
+
 /* ============================================================================
    ★★★  EASY EDIT ZONE  ★★★
    APP NAME  → shown in the browser tab, sidebar, login page and notifications.
@@ -74,7 +90,7 @@ const APP_NAME = 'Factory Gate Pass Manager';
 const MADE_BY = 'Made by Shivam';
 /* VERSION → shown on the login page + under the sidebar name.
    Bump it with every new ZIP (e.g. v26.08.27) so you can SEE the update live. */
-const APP_VERSION = 'v26.08.27d';
+const APP_VERSION = 'v26.08.27e';
 
 const STATUS = {
   PENDING_HOD: ['Pending Dept Head', 'b-amber'], PENDING_HR: ['Pending HR', 'b-blue'],
@@ -869,6 +885,7 @@ const noDeptHint = () => DEPTS.length ? '' : `<div style="background:#fff7e6;bor
 function vVisitNew() {
   const c = frame('🧍 Pre-register Visitor');
   c.innerHTML = `<div class="section formcard"><h2>Expected Visitor Pass</h2>
+    <div id="pverr" class="flash f-err" style="display:none;margin-bottom:10px"></div>
     <p class="muted small">Book an expected visitor <b>before</b> he arrives. Approvals run exactly like a normal visitor pass (visitor workflow + department rule). On the visit day it appears at the gate — security checks the details, notes items carried, and marks the visitor IN. <span class="badge b-amber">Security can still register walk-in visitors at the gate as before.</span></p>${noDeptHint()}
     <form id="pvf"><div class="frow c3">
       <div><label class="fl">Visitor Name *</label><input type="text" id="pvn" required></div>
@@ -900,30 +917,38 @@ function vVisitNew() {
   renderMine();
   document.getElementById('pvf').onsubmit = async ev => {
     ev.preventDefault();
+    const errB = document.getElementById('pverr'); errB.style.display = 'none';
     const g = id => document.getElementById(id).value.trim();
     const dept = DEPTS.find(d => d.id === g('pvdept'));
     if (!dept) return toast('Select department.', 'err');
     const date = g('pvdate');
     if (date < todayStr()) return toast('Visit date cannot be in the past.', 'err');
-    const no = await nextPassNo(C.vp, 'VP', date);
-    // role decides the approval path: HR/admin-raised = auto-APPROVED (straight to the gate);
-    // HOD-raised = HOD step auto (he IS the raiser); HR approval only if the Settings switch says so
-    let status = 'APPROVED', extras = {};
-    if (me.role === 'dept_head') {
-      extras = { hod_by: me.name + ' (Dept Head, raised it)', hod_uid: me.uid, hod_at: nowStr() };
-      if (SETTINGS.pre_reg_hod_hr_appr !== '0') status = SETTINGS.appr_mode === 'parallel' ? 'PENDING_BOTH' : 'PENDING_HR';
+    try {
+      const no = await nextPassNo(C.vp, 'VP', date);
+      // role decides the approval path: HR/admin-raised = auto-APPROVED (straight to the gate);
+      // HOD-raised = HOD step auto (he IS the raiser); HR approval only if the Settings switch says so
+      let status = 'APPROVED', extras = {};
+      if (me.role === 'dept_head') {
+        extras = { hod_by: me.name + ' (Dept Head, raised it)', hod_uid: me.uid, hod_at: nowStr() };
+        if (SETTINGS.pre_reg_hod_hr_appr !== '0') status = SETTINGS.appr_mode === 'parallel' ? 'PENDING_BOTH' : 'PENDING_HR';
+      }
+      await addDoc(C.vp, {
+        pass_no: no, visitor_name: g('pvn'), visitor_mobile: g('pvm'), visitor_company: g('pvc'),
+        purpose: g('pvpurp'), person_to_visit: g('pvperson'), department_id: dept.id, department_name: dept.name,
+        persons: Math.max(1, parseInt(g('pvper') || '1')), vehicle_no: g('pvveh').toUpperCase(),
+        pass_date: date, ...extras, status, created_by: me.name + ' (pre-registered)', created_by_uid: me.uid, created_at: nowStr(),
+      });
+      toast(status === 'APPROVED'
+        ? `Visitor pass ${no} created and APPROVED — it will appear at the gate on ${fmtD(date)}.`
+        : `Visitor pass ${no} created — waiting for HR approval; it reaches the gate on ${fmtD(date)} after approval.`);
+      ev.target.reset();
+      renderMine();
+    } catch (e) {
+      const [t, f] = explainErr(e);
+      errB.innerHTML = `❌ ${t}<br><span class="small">${f}</span>`;
+      errB.style.display = '';
+      toast('❌ Could not create the visitor pass — see the red message on screen.', 'err');
     }
-    await addDoc(C.vp, {
-      pass_no: no, visitor_name: g('pvn'), visitor_mobile: g('pvm'), visitor_company: g('pvc'),
-      purpose: g('pvpurp'), person_to_visit: g('pvperson'), department_id: dept.id, department_name: dept.name,
-      persons: Math.max(1, parseInt(g('pvper') || '1')), vehicle_no: g('pvveh').toUpperCase(),
-      pass_date: date, ...extras, status, created_by: me.name + ' (pre-registered)', created_by_uid: me.uid, created_at: nowStr(),
-    });
-    toast(status === 'APPROVED'
-      ? `Visitor pass ${no} created and APPROVED — it will appear at the gate on ${fmtD(date)}.`
-      : `Visitor pass ${no} created — waiting for HR approval; it reaches the gate on ${fmtD(date)} after approval.`);
-    ev.target.reset();
-    renderMine();
   };
 }
 
