@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>READ ME — Factory Gate Pass Manager (HTML + Firebase)</title>
+<style>
+  body { font-family:'Segoe UI',system-ui,Arial,sans-serif; margin:0; background:#f1f5f9; color:#1a2233; line-height:1.6; }
+  .wrap { max-width:760px; margin:0 auto; padding:28px 18px 50px; }
+  .card { background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:22px 26px; margin:14px 0; }
+  h1 { font-size:23px; margin:0 0 8px; }
+  h2 { font-size:17px; color:#1f3864; margin:18px 0 8px; }
+  code { background:#eef2ff; border:1px solid #c7d2fe; border-radius:5px; padding:0 5px; font-size:13.5px; }
+  .big { background:#1f3864; color:#fff; border-radius:14px; padding:24px 26px; }
+  .big h1 { color:#fff; }
+  a.btn { display:inline-block; background:#1d4ed8; color:#fff !important; text-decoration:none; border-radius:8px; padding:10px 20px; font-weight:700; margin-top:10px; }
+  ol, ul { padding-left:22px; }
+  li { margin:5px 0; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  td, th { border:1px solid #e2e8f0; padding:6px 10px; text-align:left; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="big">
+    <h1>🏭 Factory Gate Pass Manager</h1>
+    <div>HTML + Firebase edition — no installation, works in any browser.<br>
+    <b>Everything is ready. Only the one-time Firebase setup remains (10–15 min).</b></div>
+    <a class="btn" href="FIREBASE SETUP.html">👉 Open the setup guide (FIREBASE SETUP.html)</a>
+  </div>
+
+  <div class="card">
+    <h2>⚡ The 3 big steps</h2>
+    <ol>
+      <li><b>One time:</b> follow <code>FIREBASE SETUP.html</code> — create the free Firebase project and paste your keys into <code>firebase-config.js</code>.</li>
+      <li><b>Every day:</b> double-click <code>START APP - double click.bat</code> → the app opens at <code>http://localhost:8007</code>.</li>
+      <li><b>First login:</b> User ID <code>admin</code> + the password you made in the Firebase console → press the one-time <b>"Create my Admin profile"</b> button → add departments & users.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>📁 What each file is</h2>
+    <table>
+      <tr><th>File</th><th>Purpose</th></tr>
+      <tr><td><code>FIREBASE SETUP.html</code></td><td>Step-by-step picture guide. <b>Start here.</b></td></tr>
+      <tr><td><code>HOST ON GITHUB.html</code></td><td>Put the app on the internet free (github.io address) — all clicks.</td></tr>
+      <tr><td><code>START APP - double click.bat</code></td><td>Starts the app on this PC (uses Python/Anaconda).</td></tr>
+      <tr><td><code>firebase-config.js</code></td><td>The only file you edit — paste your Firebase keys here (guide step 5).</td></tr>
+      <tr><td><code>index.html / app.js / styles.css</code></td><td>The app itself. Do not edit.</td></tr>
+      <tr><td><code>firestore.rules</code></td><td>Security rules to paste in Firebase (same text is in the guide, step 4).</td></tr>
+      <tr><td><code>sample_users.csv</code></td><td>Model file for bulk-adding users on the Users page.</td></tr>
+      <tr><td><code>serve.py</code></td><td>Used by the BAT file. You never open it.</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>🧭 Which version should I use? (you have two)</h2>
+    <table>
+      <tr><th></th><th>This one (HTML + Firebase)</th><th>Other folder (Python)</th></tr>
+      <tr><td>Needs internet?</td><td><b>Yes, always</b></td><td>No — works on office LAN</td></tr>
+      <tr><td>Runs on phones / anywhere?</td><td>Yes (publish with Netlify — guide step 8)</td><td>Only inside office network</td></tr>
+      <tr><td>SMS / WhatsApp alerts</td><td>Not yet (needs paid Cloud Function)</td><td>Working ✅</td></tr>
+      <tr><td>Data stored</td><td>Your Google Firebase (cloud)</td><td>On your own PC</td></tr>
+      <tr><td>Setup effort</td><td>One-time 10–15 min Firebase setup</td><td>Nothing — just double-click</td></tr>
+    </table>
+    <p style="font-size:13.5px;color:#64748b">Both versions look and work almost the same: employee requests → Dept Head → HR → security gate → dashboard + Excel reports.</p>
+  </div>
+
+  <div class="card">
+    <h2>🆕 Latest update (your 4 new requests)</h2>
+    <table>
+      <tr><th style="width:38px">#</th><th>You asked</th><th>Where it is now</th></tr>
+      <tr><td>1</td><td>Rename to <b>Factory Gate Pass Manager</b></td><td>Done — login page, sidebar, browser tab, notifications, guides.</td></tr>
+      <tr><td>2</td><td>Select many users → delete at once</td><td>Admin → Users → ☑️ checkbox on each row (top box = select all) → <b>🗑 Delete selected</b>.</td></tr>
+      <tr><td>3</td><td>HR can approve on behalf of Dept Head</td><td>⚙️ Settings → 👷 Employee passes → tick <b>"🤝 HR can approve on behalf of the Dept Head"</b>. HR then sees those pending passes with a special <b>🤝 Approve as Dept Head</b> button — the record shows it was HR covering.</td></tr>
+      <tr><td>4</td><td>"Made by Shivam" on every page</td><td>Shown at the bottom of every page + login screen. <b>To change/remove it later:</b> open <code>app.js</code> in Notepad → the top has a marked <b>"EASY EDIT ZONE"</b> → edit the lines <code>APP_NAME</code> / <code>MADE_BY</code> → save.</td></tr>
+      <tr><td>5</td><td>CSV upload was failing / adding only 1–2 users</td><td>Rebuilt. Now: upload <b>.csv OR .xlsx directly</b>, role short-forms work (<b>hod</b>, worker, guard…), short passwords auto-become <b>welcome123</b>, and you get a <b>row-by-row report</b> — every skipped row says exactly WHY (bad role, duplicate email, missing name…).</td></tr>
+      <tr><td>6</td><td>HR can add users (new joiners) — with an admin ON/OFF switch</td><td>⚙️ Settings → <b>🤝 Permissions</b> → tick "👥 HR can add users". HR then gets an <b>👥 Add Users</b> menu (add-only: employee / Dept Head / security — no edit, no delete, no extra HR/Admin accounts).</td></tr>
+      <tr><td>7</td><td>"On behalf of Dept Head" for visitor passes too</td><td>⚙️ Settings → 🧍 Visitor passes → separate tick: <b>"🤝 HR can approve on behalf of the Dept Head (visitors)"</b>.</td></tr>
+      <tr><td>8</td><td>Nicer sidebar brand</td><td>Left side now stacks cleanly: <b>logo</b> on top → <b>factory name</b> (big & bold) → <b>GATE PASS MANAGER</b> (small, elegant).</td></tr>
+      <tr><td>9</td><td>"Forgot the ADMIN password?"</td><td>Login screen now has a <b>🔐 Forgot the ADMIN password?</b> link → a simple help page with the 3-minute console reset steps.</td></tr>
+      <tr><td>10</td><td>Keep my data safe</td><td>⚙️ Settings → <b>💾 Backup & data safety</b> → <b>⬇️ Download FULL BACKUP (Excel)</b> — every pass, visitor, user and department in one file. Take it monthly.</td></tr>
+      <tr><td>11</td><td>"Email already used" even when the email box is blank</td><td>Fixed. That meant an <b>old login key</b> (from an earlier deleted test user with the same ID) was still at Google. Now: the app <b>recycles the old key by itself</b> when possible — otherwise the report tells you the exact row to delete once in the Firebase console.</td></tr>
+      <tr><td>12</td><td>Wanted a real <b>app icon</b> on the phone instead of a browser link</td><td>Done — the app is now <b>installable</b> (no Play Store needed). On Android/PC: open the app → tap the <b>📱 Install App</b> button (login screen or left menu). On iPhone: Safari → Share → <b>Add to Home Screen</b>. It opens full-screen like a real app with the factory icon, and the same icon also shows in the <b>browser tab</b>. To use your own logo as the icon later, replace the images inside the <code>icons</code> folder (same file names).</td></tr>
+      <tr><td>13</td><td>Security could not see <b>who approved</b> a pass from the gate</td><td>Fixed. Every pass at the gate now has a <b>👁 View</b> button — pending, ready/outside, and even the <b>Completed today</b> / <b>Left today</b> history tables. It opens full details with the approval trail (Dept Head + HR names, times, remarks) and gate timings.</td></tr>
+      <tr><td>14</td><td>Sample IDs shown as EMP001 style</td><td>Changed to your style: <code>SGE001 / SEC001 / CON001</code> — on the login page, the Add User box, and the Excel/CSV template.</td></tr>
+      <tr><td>15</td><td>Employees could raise a pass with a <b>past time</b> (e.g. 10 AM pass at 11 AM)</td><td>Fixed. On the New Pass form, today's <b>Out time</b> can only be <b>now or later</b> — the time picker greys out earlier times, and even if someone types a past time (or past date) by hand, the form stops it with a clear message showing the current time. Future dates allow any time. (Already there before: date can't be past, and Expected Return must be after Out time.)</td></tr>
+      <tr><td>16</td><td>Admin password reset looked like it "did nothing"</td><td>Fixed. Earlier, if a password change failed (e.g. shorter than 6 letters), the error vanished in 4 seconds and the app still said "User updated". Now: <b>red error box stays on screen</b> until you act — with the exact reason and fix — and on success a <b>green box shows the new password</b> so you can note it down. Short passwords are blocked before saving anything.</td></tr>
+      <tr><td>17</td><td>"Nothing shows on screen even after updating"</td><td>Now you can always tell. A <b>version number (e.g. v26.08.26)</b> shows at the bottom of the login page and under the app name in the sidebar — if you don't see the latest version, the new file hasn't reached the browser (re-upload + Ctrl+F5). Also fixed: after a failed Add (e.g. ID already exists), the message now <b>stays on screen with the hint to use the ✏️ pencil</b>, and the Save button can no longer get stuck dead.</td></tr>
+      <tr><td>18</td><td><b>"Save Changes does nothing at all"</b> when editing a user</td><td>Fixed — this was the real culprit! In Edit mode the app hides the User ID box but left it "required", so the web browser silently refused to submit the form at all. Now the hidden box is properly released, so editing + password reset saves normally (with the green verified box).</td></tr>
+      <tr><td>19</td><td>Stakeholder ask: <b>HOD/HR should pre-register visitors</b>; security only verifies &amp; marks IN</td><td>Done! ⚙️ Settings → Permissions now has separate switches: <b>HR can pre-register</b> (auto-approved, straight to gate) and <b>Dept Head can pre-register</b> — with a sub-switch <b>"needs HR approval"</b> (untick = auto-approved; follows sequence/parallel). Raisers get a <b>"📋 My pre-registered visitors"</b> list with status + 👁 View. Dashboard shows <b>Visitors expected today</b> + <b>Upcoming visitors</b>. At the gate, security 👁 Views, may write <b>📦 items carried / gate note</b>, then marks IN. Walk-in registration by security works as before.</td></tr>
+      <tr><td>20</td><td><b>"Visitor cancelled the visit — how do we cancel his pre-registered pass?"</b></td><td>Done! Any visitor pass can now be <b>❌ Cancelled</b> — but only <b>before the visitor is marked IN</b> at the gate (once IN, or after he leaves, the record can never be cancelled — exactly as you asked). Who can cancel: the <b>person who raised it</b> (My pre-registered list or pass View page → ❌ Cancel), <b>HR</b> and <b>Admin</b>. <b>Security can NOT cancel passes raised by others</b> — at the gate they only get 👁 View + IN/OUT; security may cancel only a walk-in entry <b>it created itself</b>. A reason can be typed (optional) and the pass record keeps <b>who cancelled, when, and why</b>. Cancelled passes automatically leave the gate's expected list and the dashboard "Visitors expected today" count, and show a grey <b>Cancelled</b> badge everywhere (never deleted — reports stay correct).</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>✨ Earlier update (your first 9 requests)</h2>
+    <table>
+      <tr><th style="width:38px">#</th><th>You asked</th><th>Where it is now</th></tr>
+      <tr><td>1</td><td>Edit / delete departments later</td><td>Admin → Users → 🏬 Departments: <b>✏️ Rename</b> and <b>🗑 Delete</b> on every department. Delete is blocked while users belong to it.</td></tr>
+      <tr><td>2</td><td>CSV upload was not saving the department</td><td>Fixed. Re-uploading the same file now also <b>updates</b> existing users (department/details), without touching passwords.</td></tr>
+      <tr><td>3</td><td>Visitor approval: choose HOD / HR / both</td><td>Admin → ⚙️ Settings → separate <b>Visitor pass approval</b> checkboxes.</td></tr>
+      <tr><td>4</td><td>Each department can have its own workflow; if a dept has no Dept Head, HR approves</td><td>Admin → Users → 🏬 Departments → workflow dropdown per department + automatic "no Dept Head → HR" fallback.</td></tr>
+      <tr><td>5</td><td>Sequential (HOD then HR) <i>or</i> both-at-once approval</td><td>Admin → ⚙️ Settings → <b>One after another</b> vs <b>Both at the same time</b>.</td></tr>
+      <tr><td>6</td><td>Gate console cleaner</td><td>Security gate rebuilt: count chips, search box, compact cards, history collapsed.</td></tr>
+      <tr><td>7</td><td>Security can delete a wrong entry before approval + real-time dashboard</td><td>Delete button on pending entries only (approved ones are locked). Dashboard &amp; lists refresh live.</td></tr>
+      <tr><td>8</td><td>More attractive UI</td><td>New modern design: gradient sidebar, cards, badges, sticky top bar.</td></tr>
+      <tr><td>9</td><td>Notifications</td><td>🔔 Alerts button in the top bar — click once and allow. While the app tab is open, approvers get a sound + pop-up + browser notification when a new pass needs them.</td></tr>
+    </table>
+  </div>
+</div>
+</body>
+</html>

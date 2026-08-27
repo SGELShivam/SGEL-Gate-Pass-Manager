@@ -74,7 +74,7 @@ const APP_NAME = 'Factory Gate Pass Manager';
 const MADE_BY = 'Made by Shivam';
 /* VERSION → shown on the login page + under the sidebar name.
    Bump it with every new ZIP (e.g. v26.08.27) so you can SEE the update live. */
-const APP_VERSION = 'v26.08.27b';
+const APP_VERSION = 'v26.08.27c';
 
 const STATUS = {
   PENDING_HOD: ['Pending Dept Head', 'b-amber'], PENDING_HR: ['Pending HR', 'b-blue'],
@@ -107,10 +107,12 @@ const hrCanAddUsers = () => SETTINGS.hr_add_users === '1';
 /* pre-register visitor: admin picks WHO may raise (HR / Dept Head), from Settings */
 const preRegAllowed = role => role === 'admin' || (role === 'hr' && SETTINGS.pre_reg_hr === '1') || (role === 'dept_head' && SETTINGS.pre_reg_hod === '1');
 /* ❌ Cancel a visitor pass: possible only BEFORE the visitor is marked IN
-   (once VISITING / CLOSED the record can never be cancelled). Who: admin, HR,
-   security (gate) — or the person who pre-registered / raised it. */
+   (once VISITING / CLOSED the record can never be cancelled). Who: admin or
+   HR — on ANY visitor pass — or the person who raised it (Dept Head / HR /
+   security for its OWN walk-in entry only). SECURITY can never cancel passes
+   raised by someone else. */
 const canCancelVp = p => [...PENDING, 'APPROVED'].includes(p.status)
-  && (['admin', 'hr', 'security'].includes(me.role) || p.created_by_uid === me.uid);
+  && (['admin', 'hr'].includes(me.role) || p.created_by_uid === me.uid);
 async function cancelVisitorPass(id, p) {
   if (!confirm(`Cancel this visitor pass?\n\n${p.pass_no} — ${p.visitor_name} · ${fmtD(p.pass_date)}\n\nIt will leave the gate list — security will NOT expect this visitor. (Can never be done after the visitor is marked IN.)`)) return false;
   const note = (prompt('Reason for cancelling? (optional — e.g. visitor cancelled the visit)') || '').trim();
@@ -988,7 +990,7 @@ function vGate() {
       if (p.status === 'OUT' && p.pass_type === 'returnable') return `<span class="gact">${viewL(kind, p)} <button class="btn xl" data-g="gp-in" data-id="${p.id}">← IN</button></span>`;
       if (p.status === 'OUT') return `<span class="gact">${viewL(kind, p)} <span class="badge b-gray">Early exit — no return</span></span>`;
     } else {
-      if (p.status === 'APPROVED' && p.pass_date === today) return `<span class="gact">${viewL(kind, p)} <button class="btn big green" data-g="vp-in" data-id="${p.id}">IN →</button> <button class="btn sm red" data-g="vp-cancel" data-id="${p.id}" title="Visitor cancelled / no-show — cancel this expected pass (never possible after IN)">❌ Cancel</button></span>`;
+      if (p.status === 'APPROVED' && p.pass_date === today) return `<span class="gact">${viewL(kind, p)} <button class="btn big green" data-g="vp-in" data-id="${p.id}">IN →</button>${canCancelVp(p) ? ` <button class="btn sm red" data-g="vp-cancel" data-id="${p.id}" title="Caller cancels / no-show — cancel this expected pass (security: only for entries YOU created; never possible after IN)">❌ Cancel</button>` : ''}</span>`;
       if (p.status === 'VISITING') return `<span class="gact">${viewL(kind, p)} <button class="btn xl" data-g="vp-out" data-id="${p.id}">← OUT</button></span>`;
     }
     return `<span class="gact">${delBtn(kind, p)}${viewL(kind, p)}</span>`;
