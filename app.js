@@ -90,7 +90,7 @@ const APP_NAME = 'Factory Gate Pass Manager';
 const MADE_BY = 'Made by Shivam';
 /* VERSION → shown on the login page + under the sidebar name.
    Bump it with every new ZIP (e.g. v26.08.27) so you can SEE the update live. */
-const APP_VERSION = 'v26.08.27e';
+const APP_VERSION = 'v26.08.27f';
 
 const STATUS = {
   PENDING_HOD: ['Pending Dept Head', 'b-amber'], PENDING_HR: ['Pending HR', 'b-blue'],
@@ -1139,7 +1139,7 @@ async function vDashboard() {
     const out = gpRows.filter(p => p.status === 'OUT');
     const vis = vpRows.filter(p => p.status === 'VISITING');
     const overdue = out.filter(p => p.return_time && (t + ' ' + p.return_time) < nowStr()).length;
-    const cards = [
+    const empCards = [
       ['Passes raised today', gpRows.filter(p => p.pass_date === t).length, 'c-ink'],
       ['Pending Dept Head', gpRows.filter(p => p.status === 'PENDING_HOD' || (p.status === 'PENDING_BOTH' && !p.hod_by)).length, 'c-amber'],
       ['Pending HR', gpRows.filter(p => p.status === 'PENDING_HR' || (p.status === 'PENDING_BOTH' && !p.hr_by)).length, 'c-blue'],
@@ -1147,17 +1147,25 @@ async function vDashboard() {
       ['OUT right now', out.length, 'c-purple'],
       ['Overdue returns', overdue, 'c-red'],
       ['Completed today', gpRows.filter(p => p.status === 'CLOSED' && p.pass_date === t).length, 'c-ink'],
-      ['Visitors inside now', vis.length, 'c-amber'],
+    ];
+    const visCards = [
       ['Visitors expected today', vpRows.filter(p => p.status === 'APPROVED' && p.pass_date === t).length, 'c-green'],
+      ['Visitors waiting approval', vpRows.filter(p => PENDING.includes(p.status)).length, 'c-amber'],
+      ['Visitors inside now', vis.length, 'c-purple'],
+      ['Visitors left today', vpRows.filter(p => p.status === 'CLOSED' && p.pass_date === t).length, 'c-ink'],
       ['Upcoming visitors (future)', vpRows.filter(p => p.status === 'APPROVED' && p.pass_date > t).length, 'c-blue'],
     ];
     const byDept = {};
     out.forEach(p => byDept[p.department_name] = (byDept[p.department_name] || 0) + 1);
     const maxOut = Math.max(1, ...Object.values(byDept));
     const recent = [...gpRows].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 12);
+    const kpi = ([l, n, cls]) => `<div class="card kpi ${cls}"><div class="num">${n}</div><div class="lbl">${l}</div></div>`;
     c.innerHTML = `
     <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><span class="live">LIVE — updates itself, no refresh needed</span></div>
-    <div class="grid cards">${cards.map(([l, n, cls]) => `<div class="card kpi ${cls}"><div class="num">${n}</div><div class="lbl">${l}</div></div>`).join('')}</div>
+    <h2 style="margin:0 0 10px">👷 Employee Gate Passes <span class="muted small" style="font-weight:400">— staff going out / coming in</span></h2>
+    <div class="grid cards">${empCards.map(kpi).join('')}</div>
+    <h2 style="margin:18px 0 10px">🧍 Visitor Passes <span class="muted small" style="font-weight:400">— guests expected / inside / left</span></h2>
+    <div class="grid cards">${visCards.map(kpi).join('')}</div>
     <div style="height:18px"></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(360px,1fr))">
       <div class="section" style="margin:0"><h2>🚶 Employees OUT now (${out.length})</h2>
