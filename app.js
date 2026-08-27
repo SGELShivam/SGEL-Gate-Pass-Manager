@@ -74,7 +74,7 @@ const APP_NAME = 'Factory Gate Pass Manager';
 const MADE_BY = 'Made by Shivam';
 /* VERSION → shown on the login page + under the sidebar name.
    Bump it with every new ZIP (e.g. v26.08.27) so you can SEE the update live. */
-const APP_VERSION = 'v26.08.27c';
+const APP_VERSION = 'v26.08.27d';
 
 const STATUS = {
   PENDING_HOD: ['Pending Dept Head', 'b-amber'], PENDING_HR: ['Pending HR', 'b-blue'],
@@ -863,10 +863,13 @@ function vApprovals() {
 }
 
 /* ------------------------------------------------- views: pre-register a visitor (Dept Head / HR) */
+/* big friendly hint when NO departments exist yet (brand-new factory) — without it the
+   Department dropdown is empty and the browser only shows a tiny bubble nobody reads */
+const noDeptHint = () => DEPTS.length ? '' : `<div style="background:#fff7e6;border:1px solid #f1c40f77;border-left:6px solid var(--amber);padding:12px 16px;border-radius:12px;margin:12px 0;font-size:14.5px;line-height:1.55">⚠️ <b>No departments created yet — a pass cannot be made without one.</b><br>First create a department: <b>Admin</b> login → ⚙️ <b>Settings</b> → <b>Departments</b> → type the name → <b>Add</b>. Then come back &amp; refresh this page — the <b>Department</b> box below will show it.</div>`;
 function vVisitNew() {
   const c = frame('🧍 Pre-register Visitor');
   c.innerHTML = `<div class="section formcard"><h2>Expected Visitor Pass</h2>
-    <p class="muted small">Book an expected visitor <b>before</b> he arrives. Approvals run exactly like a normal visitor pass (visitor workflow + department rule). On the visit day it appears at the gate — security checks the details, notes items carried, and marks the visitor IN. <span class="badge b-amber">Security can still register walk-in visitors at the gate as before.</span></p>
+    <p class="muted small">Book an expected visitor <b>before</b> he arrives. Approvals run exactly like a normal visitor pass (visitor workflow + department rule). On the visit day it appears at the gate — security checks the details, notes items carried, and marks the visitor IN. <span class="badge b-amber">Security can still register walk-in visitors at the gate as before.</span></p>${noDeptHint()}
     <form id="pvf"><div class="frow c3">
       <div><label class="fl">Visitor Name *</label><input type="text" id="pvn" required></div>
       <div><label class="fl">Mobile</label><input type="text" id="pvm"></div>
@@ -937,7 +940,7 @@ function vGate() {
   </div>
   <div class="gsearch"><span>🔍</span><input type="text" id="gfilter" placeholder="Type name / pass no / dept / vehicle to filter the lists below…"></div>
   <div class="section" style="border-left:6px solid var(--amber);padding:12px 16px">
-    <details id="regbox"><summary style="cursor:pointer;font-size:16.5px;font-weight:800">🧍 Register a VISITOR <span class="muted small">(tap to open)</span></summary>
+    <details id="regbox"><summary style="cursor:pointer;font-size:16.5px;font-weight:800">🧍 Register a VISITOR <span class="muted small">(tap to open)</span></summary>${noDeptHint()}
       <form id="vf" style="margin-top:12px"><div class="frow c3">
         <div><label class="fl">Visitor Name *</label><input type="text" id="vn" required></div>
         <div><label class="fl">Mobile</label><input type="text" id="vm"></div>
