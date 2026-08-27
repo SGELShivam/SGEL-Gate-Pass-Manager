@@ -74,7 +74,7 @@ const APP_NAME = 'Factory Gate Pass Manager';
 const MADE_BY = 'Made by Shivam';
 /* VERSION → shown on the login page + under the sidebar name.
    Bump it with every new ZIP (e.g. v26.08.27) so you can SEE the update live. */
-const APP_VERSION = 'v26.08.26-b';
+const APP_VERSION = 'v26.08.26-c';
 
 const STATUS = {
   PENDING_HOD: ['Pending Dept Head', 'b-amber'], PENDING_HR: ['Pending HR', 'b-blue'],
@@ -97,10 +97,12 @@ let SETTINGS = {
   appr_hr_for_hod: '0',                   // '1' = HR may approve employee passes on behalf of the Dept Head
   appr_hr_for_hod_v: '0',                 // same, for visitor passes
   hr_add_users: '0',                      // '1' = HR may create users (new joiners)
+  pre_reg_visitors: '0',                  // '1' = Dept Head / HR may pre-register visitors (admin switch)
 };
 const hrCanBehalf = () => SETTINGS.appr_hr_for_hod === '1';
 const hrCanBehalfV = () => SETTINGS.appr_hr_for_hod_v === '1';
 const hrCanAddUsers = () => SETTINGS.hr_add_users === '1';
+const preRegOn = () => SETTINGS.pre_reg_visitors === '1';   // admin switch: Dept Head/HR may pre-register visitors
 let DEPTS = [];           // [{id,name,workflow,hod_count,user_count}]
 let unsubs = [];          // active snapshot listeners for current view
 
@@ -236,6 +238,7 @@ function frame(title) {
   const h = location.hash.split('?')[0] || '#/';
   const navItems = (NAVS[me.role] || []).slice();
   if (me.role === 'hr' && hrCanAddUsers()) navItems.splice(2, 0, ['#/hr-users', '👥 Add Users']);
+  if (preRegOn() && ['dept_head', 'hr', 'admin'].includes(me.role)) navItems.splice(1, 0, ['#/visit-new', '🧍 Pre-register Visitor']);
   for (const [link, label, pill] of navItems) {
     const a = document.createElement('a');
     a.textContent = label;
@@ -642,6 +645,7 @@ function vPassDetail(kind, id) {
       ['Pass No', `<b>${esc(p.pass_no)}</b>`], ['Visitor Name', esc(p.visitor_name)], ['Mobile', esc(p.visitor_mobile) || '—'],
       ['From / Company', esc(p.visitor_company) || '—'], ['Person to Visit', `${esc(p.person_to_visit)} (${esc(p.department_name)})`],
       ['Purpose', esc(p.purpose)], ['Persons', p.persons || 1], ['Vehicle No', esc(p.vehicle_no) || '—'],
+      ['📦 Items carried / gate note', esc(p.gate_note) || '—'],
       ['Date', fmtD(p.pass_date)], ['Registered by', `${esc(p.created_by || '')} · ${fmtDT(p.created_at)}`],
       ...(p.gate_in_at ? [['Entered (IN)', `${fmtDT(p.gate_in_at)} by ${esc(p.gate_in_by || '')}`]] : []),
       ...(p.gate_out_at ? [['Left (OUT)', `${fmtDT(p.gate_out_at)} by ${esc(p.gate_out_by || '')}`]] : []),
@@ -690,6 +694,17 @@ function vPassDetail(kind, id) {
     if (document.getElementById('appr')) {
       document.getElementById('appr').onclick = () => doAction(true);
       document.getElementById('rej').onclick = () => doAction(false);
+    }
+    // security notes items carried / id proof while checking the visitor at the gate
+    if (isV && ['security', 'admin'].includes(me.role) && ['APPROVED', 'VISITING'].includes(p.status)) {
+      const nb = document.createElement('div');
+      nb.className = 'section'; nb.style.borderLeft = '6px solid var(--amber)';
+      nb.innerHTML = `<h2>📦 Items carried / gate note</h2>
+        <div class="btnrow"><input type="text" id="gnote" style="flex:1;min-width:220px" placeholder="e.g. laptop bag, 2 material boxes, ID: Aadhaar 1234" value="${esc(p.gate_note || '')}">
+        <button class="btn" id="gnosave" type="button">💾 Save note</button></div>
+        <div class="muted small" style="margin-top:6px">Written by security while checking the visitor at the gate. Saved on the pass record and visible in the gate list.</div>`;
+      c.appendChild(nb);
+      nb.querySelector('#gnosave').onclick = async () => { await updateDoc(ref, { gate_note: nb.querySelector('#gnote').value.trim() }); toast('Gate note saved.'); };
     }
     // security gate buttons on detail page
     if (['security', 'admin'].includes(me.role)) {
@@ -823,6 +838,43 @@ function vApprovals() {
   listen(query(C.vp, where('status', 'in', wantVp)), s => render(s, 'pv', 'n2', 'vp'));
 }
 
+/* ------------------------------------------------- views: pre-register a visitor (Dept Head / HR) */
+function vVisitNew() {
+  const c = frame('🧍 Pre-register Visitor');
+  c.innerHTML = `<div class="section formcard"><h2>Expected Visitor Pass</h2>
+    <p class="muted small">Book an expected visitor <b>before</b> he arrives. Approvals run exactly like a normal visitor pass (visitor workflow + department rule). On the visit day it appears at the gate — security checks the details, notes items carried, and marks the visitor IN. <span class="badge b-amber">Security can still register walk-in visitors at the gate as before.</span></p>
+    <form id="pvf"><div class="frow c3">
+      <div><label class="fl">Visitor Name *</label><input type="text" id="pvn" required></div>
+      <div><label class="fl">Mobile</label><input type="text" id="pvm"></div>
+      <div><label class="fl">From / Company</label><input type="text" id="pvc"></div>
+      <div><label class="fl">Person to Visit *</label><input type="text" id="pvperson" required></div>
+      <div><label class="fl">Department *</label><select id="pvdept" required><option value="">— select —</option>
+        ${DEPTS.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}</select></div>
+      <div><label class="fl">Purpose *</label><input type="text" id="pvpurp" required></div>
+      <div><label class="fl">Visit Date *</label><input type="date" id="pvdate" min="${todayStr()}" value="${todayStr()}" required></div>
+      <div><label class="fl">Vehicle No.</label><input type="text" id="pvveh"></div>
+      <div><label class="fl">No. of Persons</label><input type="number" id="pvper" value="1" min="1"></div>
+    </div><div style="height:10px"></div>
+    <button class="btn" type="submit">Create Visitor Pass → send for approval</button></form></div>`;
+  document.getElementById('pvf').onsubmit = async ev => {
+    ev.preventDefault();
+    const g = id => document.getElementById(id).value.trim();
+    const dept = DEPTS.find(d => d.id === g('pvdept'));
+    if (!dept) return toast('Select department.', 'err');
+    const date = g('pvdate');
+    if (date < todayStr()) return toast('Visit date cannot be in the past.', 'err');
+    const no = await nextPassNo(C.vp, 'VP', date);
+    await addDoc(C.vp, {
+      pass_no: no, visitor_name: g('pvn'), visitor_mobile: g('pvm'), visitor_company: g('pvc'),
+      purpose: g('pvpurp'), person_to_visit: g('pvperson'), department_id: dept.id, department_name: dept.name,
+      persons: Math.max(1, parseInt(g('pvper') || '1')), vehicle_no: g('pvveh').toUpperCase(),
+      pass_date: date, status: pendingStatus('vp', dept.id), created_by: me.name + ' (pre-registered)', created_at: nowStr(),
+    });
+    toast(`Visitor pass ${no} created — sent for approval (${flowLabel('vp', dept.id)}). It will appear at the gate on ${fmtD(date)}.`);
+    ev.target.reset();
+  };
+}
+
 /* ============================================================ views: gate */
 function vGate() {
   const c = frame('🚪 Security Gate Console');
@@ -924,7 +976,7 @@ function vGate() {
   const vRow = (p, extra) => `<div class="gatecard"><div>
     <div class="gn">${esc(p.visitor_name)} <span class="muted">(${esc(p.visitor_company) || '—'})</span> ${extra || ''}</div>
     <div class="gm">${esc(p.pass_no)} · to meet <b>${esc(p.person_to_visit)}</b> (${esc(p.department_name)}) · ${esc(p.purpose)}
-    ${p.vehicle_no ? ' · 🚗 ' + esc(p.vehicle_no) : ''}${p.persons > 1 ? ' · 👥 ' + p.persons : ''}
+    ${p.vehicle_no ? ' · 🚗 ' + esc(p.vehicle_no) : ''}${p.persons > 1 ? ' · 👥 ' + p.persons : ''}${p.gate_note ? ' · 📦 ' + esc(p.gate_note) : ''}
     ${p.gate_in_at ? ' · entered <b>' + fmtDT(p.gate_in_at) + '</b> (' + (minsBetween(p.gate_in_at, null) || 0) + ' min)' : ''}</div></div>
     <div>${gateBtn('vp', p)}</div></div>`;
 
@@ -1665,6 +1717,9 @@ function vAdminSettings() {
     <label style="font-weight:600;display:inline-block"><input type="checkbox" id="permHrUsers" style="width:auto" ${SETTINGS.hr_add_users === '1' ? 'checked' : ''}> 👥 <b>HR can add users</b></label>
     <p class="muted small" style="margin:4px 0 0 24px">When ON, HR gets an <b>"👥 Add Users"</b> menu — when a new employee / Dept Head / security guard joins, HR can create their login right away.
     HR <b>cannot</b> edit, disable or delete users, and <b>cannot</b> create another HR or an Admin.</p>
+    <div style="height:12px"></div>
+    <label style="font-weight:600;display:inline-block"><input type="checkbox" id="permPreReg" style="width:auto" ${SETTINGS.pre_reg_visitors === '1' ? 'checked' : ''}> 🧍 <b>Dept Head / HR can pre-register visitors</b></label>
+    <p class="muted small" style="margin:4px 0 0 24px">When ON, Dept Head and HR get a <b>"🧍 Pre-register Visitor"</b> menu to book an expected visitor in advance — approvals run the same way, and the pass waits at the gate. On arrival, security checks the details, can note <b>items carried / ID</b> on the pass, and only then marks the visitor IN. <b>Security can still register walk-in visitors at the gate as before.</b></p>
     <div style="height:10px"></div><button class="btn" id="permsave">💾 Save permissions</button></div>
 
   <div class="section formcard"><h2>🖼️ Company logo</h2>
@@ -1728,7 +1783,10 @@ function vAdminSettings() {
     toast('Approval workflow saved.');
   };
   document.getElementById('permsave').onclick = async () => {
-    await saveSettings({ hr_add_users: document.getElementById('permHrUsers').checked ? '1' : '0' });
+    await saveSettings({
+      hr_add_users: document.getElementById('permHrUsers').checked ? '1' : '0',
+      pre_reg_visitors: document.getElementById('permPreReg').checked ? '1' : '0',
+    });
     toast('Permissions saved.' + (hrCanAddUsers() ? ' HR now sees an "👥 Add Users" menu.' : ''));
   };
   document.getElementById('logoup').onclick = () => {
@@ -1838,6 +1896,7 @@ function route(h) {
   if (h === '#/pass-new' && guard('employee')) return vNewPass();
   if (parts[0] === 'pass' && parts.length === 3 && guard('employee', 'dept_head', 'hr', 'security', 'admin')) return vPassDetail(parts[1], parts[2]);
   if (h === '#/approvals' && guard('dept_head', 'hr')) return vApprovals();
+  if (h === '#/visit-new' && guard('dept_head', 'hr', 'admin') && preRegOn()) return vVisitNew();
   if (h === '#/gate' && guard('security', 'admin')) return vGate();
   if (h === '#/dashboard' && guard('hr', 'admin', 'dept_head')) return vDashboard();
   if (h === '#/reports' && guard('hr', 'admin', 'dept_head')) return vReports();
