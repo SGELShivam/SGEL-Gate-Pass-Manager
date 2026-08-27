@@ -74,7 +74,7 @@ const APP_NAME = 'Factory Gate Pass Manager';
 const MADE_BY = 'Made by Shivam';
 /* VERSION → shown on the login page + under the sidebar name.
    Bump it with every new ZIP (e.g. v26.08.27) so you can SEE the update live. */
-const APP_VERSION = 'v26.08.26-c';
+const APP_VERSION = 'v26.08.27b';
 
 const STATUS = {
   PENDING_HOD: ['Pending Dept Head', 'b-amber'], PENDING_HR: ['Pending HR', 'b-blue'],
@@ -97,12 +97,29 @@ let SETTINGS = {
   appr_hr_for_hod: '0',                   // '1' = HR may approve employee passes on behalf of the Dept Head
   appr_hr_for_hod_v: '0',                 // same, for visitor passes
   hr_add_users: '0',                      // '1' = HR may create users (new joiners)
-  pre_reg_visitors: '0',                  // '1' = Dept Head / HR may pre-register visitors (admin switch)
+  pre_reg_hr: '0',                        // '1' = HR may pre-register visitors (auto-approved)
+  pre_reg_hod: '0',                       // '1' = Dept Head may pre-register visitors
+  pre_reg_hod_hr_appr: '1',               // '1' = HOD-raised visitor passes need HR approval ('0' = auto-approved)
 };
 const hrCanBehalf = () => SETTINGS.appr_hr_for_hod === '1';
 const hrCanBehalfV = () => SETTINGS.appr_hr_for_hod_v === '1';
 const hrCanAddUsers = () => SETTINGS.hr_add_users === '1';
-const preRegOn = () => SETTINGS.pre_reg_visitors === '1';   // admin switch: Dept Head/HR may pre-register visitors
+/* pre-register visitor: admin picks WHO may raise (HR / Dept Head), from Settings */
+const preRegAllowed = role => role === 'admin' || (role === 'hr' && SETTINGS.pre_reg_hr === '1') || (role === 'dept_head' && SETTINGS.pre_reg_hod === '1');
+/* ❌ Cancel a visitor pass: possible only BEFORE the visitor is marked IN
+   (once VISITING / CLOSED the record can never be cancelled). Who: admin, HR,
+   security (gate) — or the person who pre-registered / raised it. */
+const canCancelVp = p => [...PENDING, 'APPROVED'].includes(p.status)
+  && (['admin', 'hr', 'security'].includes(me.role) || p.created_by_uid === me.uid);
+async function cancelVisitorPass(id, p) {
+  if (!confirm(`Cancel this visitor pass?\n\n${p.pass_no} — ${p.visitor_name} · ${fmtD(p.pass_date)}\n\nIt will leave the gate list — security will NOT expect this visitor. (Can never be done after the visitor is marked IN.)`)) return false;
+  const note = (prompt('Reason for cancelling? (optional — e.g. visitor cancelled the visit)') || '').trim();
+  await updateDoc(doc(db, 'visitor_passes', id), {
+    status: 'CANCELLED', cancelled_by: me.name, cancelled_by_uid: me.uid, cancelled_at: nowStr(), cancel_note: note,
+  });
+  toast(`Visitor pass ${p.pass_no} cancelled${note ? ' — ' + note : ''}.`);
+  return true;
+}
 let DEPTS = [];           // [{id,name,workflow,hod_count,user_count}]
 let unsubs = [];          // active snapshot listeners for current view
 
@@ -238,7 +255,7 @@ function frame(title) {
   const h = location.hash.split('?')[0] || '#/';
   const navItems = (NAVS[me.role] || []).slice();
   if (me.role === 'hr' && hrCanAddUsers()) navItems.splice(2, 0, ['#/hr-users', '👥 Add Users']);
-  if (preRegOn() && ['dept_head', 'hr', 'admin'].includes(me.role)) navItems.splice(1, 0, ['#/visit-new', '🧍 Pre-register Visitor']);
+  if (preRegAllowed(me.role)) navItems.splice(1, 0, ['#/visit-new', '🧍 Pre-register Visitor']);
   for (const [link, label, pill] of navItems) {
     const a = document.createElement('a');
     a.textContent = label;
@@ -638,7 +655,7 @@ function vPassDetail(kind, id) {
     if (!snap.exists()) { c.innerHTML = '<div class="section">Pass not found.</div>'; return; }
     const p = snap.data();
     if (me.role === 'employee' && p.employee_uid !== me.uid) { c.innerHTML = '<div class="section">⛔ Not your pass.</div>'; return; }
-    if (me.role === 'dept_head' && p.department_id !== me.department_id) { c.innerHTML = '<div class="section">⛔ Different department.</div>'; return; }
+    if (me.role === 'dept_head' && p.department_id !== me.department_id && !(kind === 'vp' && p.created_by_uid === me.uid)) { c.innerHTML = '<div class="section">⛔ Different department.</div>'; return; }
     const isV = kind === 'vp';
     const mins = isV ? minsBetween(p.gate_in_at, p.gate_out_at) : minsBetween(p.gate_out_at, p.gate_in_at);
     const rows = isV ? [
@@ -647,6 +664,7 @@ function vPassDetail(kind, id) {
       ['Purpose', esc(p.purpose)], ['Persons', p.persons || 1], ['Vehicle No', esc(p.vehicle_no) || '—'],
       ['📦 Items carried / gate note', esc(p.gate_note) || '—'],
       ['Date', fmtD(p.pass_date)], ['Registered by', `${esc(p.created_by || '')} · ${fmtDT(p.created_at)}`],
+      ...(p.status === 'CANCELLED' ? [['❌ Cancelled', `${fmtDT(p.cancelled_at) || ''} · by <b>${esc(p.cancelled_by || '—')}</b>${p.cancel_note ? ' · Reason: ' + esc(p.cancel_note) : ''}`]] : []),
       ...(p.gate_in_at ? [['Entered (IN)', `${fmtDT(p.gate_in_at)} by ${esc(p.gate_in_by || '')}`]] : []),
       ...(p.gate_out_at ? [['Left (OUT)', `${fmtDT(p.gate_out_at)} by ${esc(p.gate_out_by || '')}`]] : []),
       ...(mins != null ? [['Time Inside', `<b>${mins} min</b>${p.status === 'VISITING' ? ' (still inside)' : ''}`]] : []),
@@ -664,6 +682,8 @@ function vPassDetail(kind, id) {
     let actions = `<button class="btn gray" id="prn">🖨️ Print Pass</button>`;
     if (me.role === 'employee' && p.employee_uid === me.uid && PENDING.includes(p.status))
       actions += ` <button class="btn red" id="cancel">Cancel Request</button>`;
+    if (isV && canCancelVp(p))
+      actions += ` <button class="btn red" id="vcancel" title="Visitor cancelled the visit? Removes it from the gate list — possible only before the visitor is marked IN">❌ Cancel Visitor Pass</button>`;
     const needHodNow = p.status === 'PENDING_HOD' || (p.status === 'PENDING_BOTH' && !p.hod_by);
     const needHrNow = p.status === 'PENDING_HR' || (p.status === 'PENDING_BOTH' && !p.hr_by);
     const canHOD = me.role === 'dept_head' && needHodNow && p.department_id === me.department_id;
@@ -686,6 +706,8 @@ function vPassDetail(kind, id) {
     document.getElementById('prn').onclick = () => printPass(kind, p);
     const cb = document.getElementById('cancel');
     if (cb) cb.onclick = async () => { if (confirm('Cancel this pass?')) { await updateDoc(ref, { status: 'CANCELLED' }); toast('Cancelled.'); } };
+    const vcx = document.getElementById('vcancel');
+    if (vcx) vcx.onclick = () => cancelVisitorPass(id, p);
     const doAction = async ok => {
       const remarks = document.getElementById('rmk').value.trim();
       if (!ok && !remarks) return toast('Remarks are required when rejecting.', 'err');
@@ -855,7 +877,22 @@ function vVisitNew() {
       <div><label class="fl">Vehicle No.</label><input type="text" id="pvveh"></div>
       <div><label class="fl">No. of Persons</label><input type="number" id="pvper" value="1" min="1"></div>
     </div><div style="height:10px"></div>
-    <button class="btn" type="submit">Create Visitor Pass → send for approval</button></form></div>`;
+    <button class="btn" type="submit">Create Visitor Pass</button></form></div>
+  <div class="section"><h2>📋 My pre-registered visitors</h2><div id="mypre">Loading…</div></div>`;
+  const renderMine = async () => {
+    const el = document.getElementById('mypre'); if (!el) return;
+    const snap = await getDocs(C.vp);
+    const mine = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.created_by_uid === me.uid)
+      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 20);
+    el.innerHTML = mine.length ? `<div class="twrap"><table class="tbl"><tr><th>Pass</th><th>Visitor</th><th>Visit date</th><th>To meet</th><th>Status</th><th></th></tr>
+      ${mine.map(p => `<tr><td class="nowrap"><b>${esc(p.pass_no)}</b></td><td>${esc(p.visitor_name)}</td><td class="nowrap">${fmtD(p.pass_date)}</td><td>${esc(p.person_to_visit)}</td><td>${badge(p.status)}</td><td class="nowrap"><a class="btn sm gray" href="#/pass/vp/${p.id}">👁 View</a>${canCancelVp(p) ? ` <button class="btn sm red" data-vcx="${p.id}" title="Visitor cancelled the visit? (only possible before gate IN)">❌ Cancel</button>` : ''}</td></tr>`).join('')}</table></div>`
+      : '<p class="muted">No pre-registered visitors yet — the passes you raise will show here with their live status.</p>';
+    el.querySelectorAll('[data-vcx]').forEach(b => b.onclick = async () => {
+      const p = mine.find(x => x.id === b.dataset.vcx);
+      if (p && await cancelVisitorPass(b.dataset.vcx, p)) renderMine();
+    });
+  };
+  renderMine();
   document.getElementById('pvf').onsubmit = async ev => {
     ev.preventDefault();
     const g = id => document.getElementById(id).value.trim();
@@ -864,14 +901,24 @@ function vVisitNew() {
     const date = g('pvdate');
     if (date < todayStr()) return toast('Visit date cannot be in the past.', 'err');
     const no = await nextPassNo(C.vp, 'VP', date);
+    // role decides the approval path: HR/admin-raised = auto-APPROVED (straight to the gate);
+    // HOD-raised = HOD step auto (he IS the raiser); HR approval only if the Settings switch says so
+    let status = 'APPROVED', extras = {};
+    if (me.role === 'dept_head') {
+      extras = { hod_by: me.name + ' (Dept Head, raised it)', hod_uid: me.uid, hod_at: nowStr() };
+      if (SETTINGS.pre_reg_hod_hr_appr !== '0') status = SETTINGS.appr_mode === 'parallel' ? 'PENDING_BOTH' : 'PENDING_HR';
+    }
     await addDoc(C.vp, {
       pass_no: no, visitor_name: g('pvn'), visitor_mobile: g('pvm'), visitor_company: g('pvc'),
       purpose: g('pvpurp'), person_to_visit: g('pvperson'), department_id: dept.id, department_name: dept.name,
       persons: Math.max(1, parseInt(g('pvper') || '1')), vehicle_no: g('pvveh').toUpperCase(),
-      pass_date: date, status: pendingStatus('vp', dept.id), created_by: me.name + ' (pre-registered)', created_at: nowStr(),
+      pass_date: date, ...extras, status, created_by: me.name + ' (pre-registered)', created_by_uid: me.uid, created_at: nowStr(),
     });
-    toast(`Visitor pass ${no} created — sent for approval (${flowLabel('vp', dept.id)}). It will appear at the gate on ${fmtD(date)}.`);
+    toast(status === 'APPROVED'
+      ? `Visitor pass ${no} created and APPROVED — it will appear at the gate on ${fmtD(date)}.`
+      : `Visitor pass ${no} created — waiting for HR approval; it reaches the gate on ${fmtD(date)} after approval.`);
     ev.target.reset();
+    renderMine();
   };
 }
 
@@ -918,7 +965,7 @@ function vGate() {
       pass_no: no, visitor_name: g('vn'), visitor_mobile: g('vm'), visitor_company: g('vc'),
       purpose: g('vpurp'), person_to_visit: g('vperson'), department_id: dept.id, department_name: dept.name,
       persons: Math.max(1, parseInt(g('vper') || '1')), vehicle_no: g('vveh').toUpperCase(),
-      pass_date: todayStr(), status: pendingStatus('vp', dept.id), created_by: me.name, created_at: nowStr(),
+      pass_date: todayStr(), status: pendingStatus('vp', dept.id), created_by: me.name, created_by_uid: me.uid, created_at: nowStr(),
     });
     toast(`Visitor pass ${no} created — sent for approval (${flowLabel('vp', dept.id)}).`);
     ev.target.reset();
@@ -941,7 +988,7 @@ function vGate() {
       if (p.status === 'OUT' && p.pass_type === 'returnable') return `<span class="gact">${viewL(kind, p)} <button class="btn xl" data-g="gp-in" data-id="${p.id}">← IN</button></span>`;
       if (p.status === 'OUT') return `<span class="gact">${viewL(kind, p)} <span class="badge b-gray">Early exit — no return</span></span>`;
     } else {
-      if (p.status === 'APPROVED' && p.pass_date === today) return `<span class="gact">${viewL(kind, p)} <button class="btn big green" data-g="vp-in" data-id="${p.id}">IN →</button></span>`;
+      if (p.status === 'APPROVED' && p.pass_date === today) return `<span class="gact">${viewL(kind, p)} <button class="btn big green" data-g="vp-in" data-id="${p.id}">IN →</button> <button class="btn sm red" data-g="vp-cancel" data-id="${p.id}" title="Visitor cancelled / no-show — cancel this expected pass (never possible after IN)">❌ Cancel</button></span>`;
       if (p.status === 'VISITING') return `<span class="gact">${viewL(kind, p)} <button class="btn xl" data-g="vp-out" data-id="${p.id}">← OUT</button></span>`;
     }
     return `<span class="gact">${delBtn(kind, p)}${viewL(kind, p)}</span>`;
@@ -953,6 +1000,11 @@ function vGate() {
       if (!confirm('Delete this entry? This is only possible while it is waiting for approval.')) return;
       await deleteDoc(doc(db, b.dataset.g === 'gp-del' ? 'employee_passes' : 'visitor_passes', b.dataset.id));
       toast('Entry deleted.');
+      return;
+    }
+    if (b.dataset.g === 'vp-cancel') {           // expected visitor cancelled / did not show up
+      const s = await getDoc(doc(db, 'visitor_passes', b.dataset.id));
+      if (s.exists() && canCancelVp(s.data())) await cancelVisitorPass(s.id, s.data());
       return;
     }
     const map = {
@@ -1066,6 +1118,8 @@ async function vDashboard() {
       ['Overdue returns', overdue, 'c-red'],
       ['Completed today', gpRows.filter(p => p.status === 'CLOSED' && p.pass_date === t).length, 'c-ink'],
       ['Visitors inside now', vis.length, 'c-amber'],
+      ['Visitors expected today', vpRows.filter(p => p.status === 'APPROVED' && p.pass_date === t).length, 'c-green'],
+      ['Upcoming visitors (future)', vpRows.filter(p => p.status === 'APPROVED' && p.pass_date > t).length, 'c-blue'],
     ];
     const byDept = {};
     out.forEach(p => byDept[p.department_name] = (byDept[p.department_name] || 0) + 1);
@@ -1718,8 +1772,11 @@ function vAdminSettings() {
     <p class="muted small" style="margin:4px 0 0 24px">When ON, HR gets an <b>"👥 Add Users"</b> menu — when a new employee / Dept Head / security guard joins, HR can create their login right away.
     HR <b>cannot</b> edit, disable or delete users, and <b>cannot</b> create another HR or an Admin.</p>
     <div style="height:12px"></div>
-    <label style="font-weight:600;display:inline-block"><input type="checkbox" id="permPreReg" style="width:auto" ${SETTINGS.pre_reg_visitors === '1' ? 'checked' : ''}> 🧍 <b>Dept Head / HR can pre-register visitors</b></label>
-    <p class="muted small" style="margin:4px 0 0 24px">When ON, Dept Head and HR get a <b>"🧍 Pre-register Visitor"</b> menu to book an expected visitor in advance — approvals run the same way, and the pass waits at the gate. On arrival, security checks the details, can note <b>items carried / ID</b> on the pass, and only then marks the visitor IN. <b>Security can still register walk-in visitors at the gate as before.</b></p>
+    <div style="font-weight:600">🧍 <b>Pre-register visitors — who is allowed?</b> <span class="muted small">(admin always can)</span></div>
+    <label style="font-weight:600;display:block;margin:6px 0 0 24px"><input type="checkbox" id="permPrHr" style="width:auto" ${SETTINGS.pre_reg_hr === '1' ? 'checked' : ''}> <b>HR</b> can pre-register <span class="muted small">— auto-approved, goes straight to the gate</span></label>
+    <label style="font-weight:600;display:block;margin:8px 0 0 24px"><input type="checkbox" id="permPrHod" style="width:auto" ${SETTINGS.pre_reg_hod === '1' ? 'checked' : ''}> <b>Dept Head</b> can pre-register</label>
+    <label style="font-weight:600;display:block;margin:4px 0 0 48px"><input type="checkbox" id="permPrHodAppr" style="width:auto" ${SETTINGS.pre_reg_hod_hr_appr !== '0' ? 'checked' : ''}> these need <b>HR approval</b> <span class="muted small">— untick = auto-approved, straight to the gate (follows your sequence/parallel choice)</span></label>
+    <p class="muted small" style="margin:6px 0 0 24px">The raiser sees a <b>"🧍 Pre-register Visitor"</b> menu with his own list + status + View. At the gate, security checks the pass, may note <b>📦 items carried / ID</b>, and only then marks the visitor IN. Walk-in registration by security works as before.</p>
     <div style="height:10px"></div><button class="btn" id="permsave">💾 Save permissions</button></div>
 
   <div class="section formcard"><h2>🖼️ Company logo</h2>
@@ -1782,10 +1839,16 @@ function vAdminSettings() {
     });
     toast('Approval workflow saved.');
   };
+  // the HR-approval sub-switch only makes sense while Dept Head is allowed
+  const pHod = document.getElementById('permPrHod'), pHodAppr = document.getElementById('permPrHodAppr');
+  const syncSub = () => { pHodAppr.disabled = !pHod.checked; };
+  pHod.onchange = syncSub; syncSub();
   document.getElementById('permsave').onclick = async () => {
     await saveSettings({
       hr_add_users: document.getElementById('permHrUsers').checked ? '1' : '0',
-      pre_reg_visitors: document.getElementById('permPreReg').checked ? '1' : '0',
+      pre_reg_hr: document.getElementById('permPrHr').checked ? '1' : '0',
+      pre_reg_hod: pHod.checked ? '1' : '0',
+      pre_reg_hod_hr_appr: pHodAppr.checked ? '1' : '0',
     });
     toast('Permissions saved.' + (hrCanAddUsers() ? ' HR now sees an "👥 Add Users" menu.' : ''));
   };
@@ -1896,7 +1959,7 @@ function route(h) {
   if (h === '#/pass-new' && guard('employee')) return vNewPass();
   if (parts[0] === 'pass' && parts.length === 3 && guard('employee', 'dept_head', 'hr', 'security', 'admin')) return vPassDetail(parts[1], parts[2]);
   if (h === '#/approvals' && guard('dept_head', 'hr')) return vApprovals();
-  if (h === '#/visit-new' && guard('dept_head', 'hr', 'admin') && preRegOn()) return vVisitNew();
+  if (h === '#/visit-new' && preRegAllowed(me.role)) return vVisitNew();
   if (h === '#/gate' && guard('security', 'admin')) return vGate();
   if (h === '#/dashboard' && guard('hr', 'admin', 'dept_head')) return vDashboard();
   if (h === '#/reports' && guard('hr', 'admin', 'dept_head')) return vReports();
