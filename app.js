@@ -47,6 +47,11 @@ const pad = n => String(n).padStart(2, '0');
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const nowStr = () => { const d = new Date(); return `${todayStr()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const daysAgo = n => { const d = new Date(Date.now() - n * 864e5); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+/* live screens (dashboard / gate console) load only the last N days of passes — keeps the
+   FREE online-database plan comfortable even at 100+ passes a day (at 60-day retention the
+   full set would be ~6,000+ records per page-open). Reports & Excel always read the exact
+   date range you pick, so nothing is ever hidden there. */
+const LIVE_WINDOW = () => daysAgo(14);
 const fmtD = s => { if (!s) return '—'; const [y, m, d] = s.split('-'); return s.length >= 10 ? `${d}-${'JanFebMarAprMayJunJulAugSepOctNovDec'.slice((+m - 1) * 3, (+m - 1) * 3 + 3)}-${y}` : s; };
 const fmtDT = s => { if (!s) return '—'; const [date, t] = s.split(' '); if (!t) return fmtD(date); let [h, m] = t.split(':').map(Number); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return `${fmtD(date)} ${h}:${pad(m)} ${ap}`; };
 const minsBetween = (a, b) => { if (!a) return null; try { const e = b ? new Date(b.replace(' ', 'T')) : new Date(); return Math.max(0, Math.round((e - new Date(a.replace(' ', 'T'))) / 60000)); } catch (e) { return null; } };
@@ -90,7 +95,7 @@ const APP_NAME = 'Factory Gate Pass Manager';
 const MADE_BY = 'Made by Shivam';
 /* VERSION → shown on the login page + under the sidebar name.
    Bump it with every new ZIP (e.g. v26.08.27) so you can SEE the update live. */
-const APP_VERSION = 'v26.08.27f';
+const APP_VERSION = 'v26.08.27g';
 
 const STATUS = {
   PENDING_HOD: ['Pending Dept Head', 'b-amber'], PENDING_HR: ['Pending HR', 'b-blue'],
@@ -314,7 +319,7 @@ async function loadBadges() {
         || (r.status === 'PENDING_BOTH' && (!r.hr_by || (bh && !r.hod_by)));
       set('bc-hr', a.docs.filter(d => mineK(d.data(), bhGp)).length + b.docs.filter(d => mineK(d.data(), bhVp)).length);
     } else if (me.role === 'security') {
-      const t = todayStr(), a = await getDocs(C.gp), b = await getDocs(C.vp);
+      const t = todayStr(), a = await getDocs(query(C.gp, where('pass_date', '>=', LIVE_WINDOW()))), b = await getDocs(query(C.vp, where('pass_date', '>=', LIVE_WINDOW())));
       let n = 0;
       a.forEach(d => { const r = d.data(); if ((r.status === 'APPROVED' && r.pass_date === t) || r.status === 'OUT') n++; });
       b.forEach(d => { const r = d.data(); if ((r.status === 'APPROVED' && r.pass_date === t) || r.status === 'VISITING') n++; });
@@ -903,7 +908,7 @@ function vVisitNew() {
   <div class="section"><h2>📋 My pre-registered visitors</h2><div id="mypre">Loading…</div></div>`;
   const renderMine = async () => {
     const el = document.getElementById('mypre'); if (!el) return;
-    const snap = await getDocs(C.vp);
+    const snap = await getDocs(query(C.vp, where('pass_date', '>=', daysAgo(62))));   // raiser's own recent list — Reports keep the full 60 days
     const mine = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.created_by_uid === me.uid)
       .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 20);
     el.innerHTML = mine.length ? `<div class="twrap"><table class="tbl"><tr><th>Pass</th><th>Visitor</th><th>Visit date</th><th>To meet</th><th>Status</th><th></th></tr>
@@ -1123,8 +1128,8 @@ function vGate() {
     const w = document.getElementById('c-wait'); if (w) w.textContent = waitN;
     applyFilter();
   };
-  listen(C.vp, snap => { vpRows = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderAll(); });
-  listen(C.gp, snap => { gpRows = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderAll(); });
+  listen(query(C.vp, where('pass_date', '>=', LIVE_WINDOW())), snap => { vpRows = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderAll(); });
+  listen(query(C.gp, where('pass_date', '>=', LIVE_WINDOW())), snap => { gpRows = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderAll(); });
   tick(30000, renderAll);   // refresh "minutes inside/outside" + overdue flags live
 }
 
@@ -1190,8 +1195,8 @@ async function vDashboard() {
   };
   let gp = null, vp = null;
   const redrawAll = () => { if (gp && vp) redraw(gp, vp); };
-  listen(C.gp, s => { gp = s.docs.map(d => ({ id: d.id, ...d.data() })); redrawAll(); });
-  listen(C.vp, s => { vp = s.docs.map(d => ({ id: d.id, ...d.data() })); redrawAll(); });
+  listen(query(C.gp, where('pass_date', '>=', LIVE_WINDOW())), s => { gp = s.docs.map(d => ({ id: d.id, ...d.data() })); redrawAll(); });
+  listen(query(C.vp, where('pass_date', '>=', LIVE_WINDOW())), s => { vp = s.docs.map(d => ({ id: d.id, ...d.data() })); redrawAll(); });
   tick(30000, redrawAll);   // keep minutes / overdue flags moving even without data changes
 }
 
