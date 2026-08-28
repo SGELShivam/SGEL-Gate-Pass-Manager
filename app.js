@@ -95,7 +95,7 @@ const APP_NAME = 'Factory Gate Pass Manager';
 const MADE_BY = 'Made by Shivam';
 /* VERSION → shown on the login page + under the sidebar name.
    Bump it with every new ZIP (e.g. v26.08.27) so you can SEE the update live. */
-const APP_VERSION = 'v26.08.27g';
+const APP_VERSION = 'v26.08.27h';
 
 const STATUS = {
   PENDING_HOD: ['Pending Dept Head', 'b-amber'], PENDING_HR: ['Pending HR', 'b-blue'],
@@ -1247,7 +1247,7 @@ function vReports() {
     renderRows();
   };
   const renderRows = () => {
-    const el = document.getElementById('rt'); document.getElementById('cnt').textContent = `${rows.length} record(s). Excel includes detail + department summary sheets.`;
+    const el = document.getElementById('rt'); document.getElementById('cnt').textContent = `${rows.length} record(s). Excel = Detail + Department Summary + 📊 Dashboard (graphs) sheets.`;
     if (!rows.length) { el.innerHTML = '<p class="muted">No records for these filters.</p>'; return; }
     if (f.kind === 'employee') {
       el.innerHTML = `<table class="tbl"><tr><th>Pass No</th><th>Date</th><th>Emp</th><th>Dept</th><th>Type</th><th>Planned</th><th>Actual Out → In</th><th>Min</th><th>Status</th></tr>
@@ -1272,6 +1272,124 @@ function vReports() {
   };
   document.getElementById('xl').onclick = () => exportExcel(f, rows);
   runQuery();
+}
+
+/* ================= 📊 Excel "Dashboard" sheet: KPI band + real graphs (canvas → image, opens in EVERY Excel) + data tables ================= */
+function dayList(from, to) {
+  const out = [];
+  let [y, m, d] = from.split('-').map(Number);
+  const [ey, em, ed] = to.split('-').map(Number), end = ey * 10000 + em * 100 + ed;
+  while (y * 10000 + m * 100 + d <= end && out.length < 62) {
+    out.push(`${y}-${pad(m)}-${pad(d)}`);
+    const dt = new Date(y, m - 1, d + 1); y = dt.getFullYear(); m = dt.getMonth() + 1; d = dt.getDate();
+  }
+  return out;
+}
+function dashTotals(rows, kind) {
+  const s = st => rows.filter(p => p.status === st).length;
+  const pend = rows.filter(p => PENDING.includes(p.status)).length;
+  const rej = s('REJECTED') + s('CANCELLED') + s('EXPIRED');
+  return kind === 'employee'
+    ? [['Total passes issued', rows.length], ['Completed trips', s('CLOSED')], ['Approved / at-gate now', s('APPROVED') + s('OUT')], ['Pending approval', pend], ['Rejected / Cancelled / Expired', rej]]
+    : [['Visitors received', rows.length], ['Visits completed', s('CLOSED')], ['Still inside now', s('VISITING')], ['Waiting approval', pend], ['Rejected / Cancelled / Expired', rej]];
+}
+const cellBar = (v, max) => '█'.repeat(Math.round(v / Math.max(1, max) * 22)) + ' ' + v;
+/* draws a REAL bar chart on canvas and returns it as a PNG data-url (image embeds safely in every spreadsheet app) */
+function drawBarChart(title, items, { w = 900, h = 300, bar = '#2f5597', horizontal = false } = {}) {
+  try {
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const ctx = cv.getContext && cv.getContext('2d'); if (!ctx || !items.length) return null;
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+    const max = Math.max(1, ...items.map(i => i.value));
+    ctx.fillStyle = '#1f3864'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(title, 16, 28);
+    if (horizontal) {
+      const labW = 200, bw = w - labW - 110;
+      const rowH = Math.min(36, (h - 52) / items.length), barH = Math.min(22, rowH - 10);
+      items.forEach((it, i) => {
+        const y = 48 + i * rowH, bl = Math.max(1, Math.round(it.value / max * bw));
+        ctx.fillStyle = '#333333'; ctx.font = '13px sans-serif'; ctx.textAlign = 'right';
+        ctx.fillText(it.label.length > 27 ? it.label.slice(0, 26) + '…' : it.label, labW - 8, y + barH - 6);
+        ctx.fillStyle = bar; ctx.fillRect(labW, y, bl, barH);
+        ctx.fillStyle = '#333333'; ctx.textAlign = 'left'; ctx.fillText(String(it.value), labW + bl + 7, y + barH - 6);
+      });
+    } else {
+      const n = items.length, pad = 42, cw = (w - pad * 2) / n, barW = Math.min(46, cw * 0.62), base = h - 36;
+      items.forEach((it, i) => {
+        const bh = Math.max(1, Math.round(it.value / max * (base - 64)));
+        const x = pad + i * cw + (cw - barW) / 2;
+        ctx.fillStyle = bar; ctx.fillRect(x, base - bh, barW, bh);
+        ctx.fillStyle = '#333333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(String(it.value), x + barW / 2, base - bh - 6);
+        ctx.save(); ctx.translate(x + barW / 2, base + 10); ctx.rotate(n > 12 ? -0.48 : 0);
+        ctx.fillText(it.label.slice(5), 0, 0); ctx.restore();
+      });
+      ctx.strokeStyle = '#999999'; ctx.beginPath(); ctx.moveTo(pad, base); ctx.lineTo(w - pad, base); ctx.stroke();
+    }
+    return cv.toDataURL('image/png');
+  } catch (e) { return null; }
+}
+function addDashSheet(wb, f, rows) {
+  const ws = wb.addWorksheet('Dashboard');
+  let cur = 4;                                   // next row (1-based) that addRow() will write
+  const A = r => { ws.addRow(r); cur++; };
+  ws.mergeCells(1, 1, 1, 8);
+  const t = ws.getCell(1, 1);
+  t.value = `📊 ${SETTINGS.company_name} — ${f.kind === 'employee' ? 'EMPLOYEE GATE PASS' : 'VISITOR PASS'} DASHBOARD  (${f.from} → ${f.to})`;
+  t.font = { bold: true, size: 15, color: { argb: 'FF1F3864' } };
+  ws.mergeCells(2, 1, 2, 8);
+  const g = ws.getCell(2, 1);
+  g.value = 'Graphs are snapshots of the detail data in this file · generated ' + nowStr();
+  g.font = { italic: true, size: 10, color: { argb: 'FF777777' } };
+  A([]);
+  dashTotals(rows, f.kind).forEach(([l, v]) => { const r = ws.addRow([l, v]); r.eachCell(c => { c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDEBF7' } }; }); cur++; });
+  A([]);
+  const head = txt => { const r = ws.addRow([txt]); r.eachCell(c => { c.font = { bold: true, size: 12, color: { argb: 'FF1F3864' } }; }); cur++; };
+  const putChart = (img, w, h) => {
+    if (!img) { A(['(Graph image not supported on this device — the data table below carries the same numbers)']); return; }
+    ws.addImage(wb.addImage({ base64: img.split(',')[1], extension: 'png' }), { tl: { col: 0, row: cur - 1 }, ext: { width: w, height: h } });
+    const sp = Math.ceil(h / 21) + 1; for (let i = 0; i < sp; i++) A([]);
+  };
+  const tblHead = (a, b) => { const r = ws.addRow([a, b, 'Graph']); r.eachCell(c => { c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } }; }); cur++; };
+  const maxOf = items => Math.max(1, ...items.map(i => i.value));
+  const unit = f.kind === 'employee' ? 'Passes' : 'Visitors';
+  // 1) per-day trend
+  const cnt = {}; dayList(f.from, f.to).forEach(d => cnt[d] = 0);
+  rows.forEach(p => { if (cnt[p.pass_date] != null) cnt[p.pass_date]++; });
+  const dayItems = Object.keys(cnt).sort().map(d => ({ label: d, value: cnt[d] }));
+  head(`📈 ${unit.toUpperCase()} PER DAY`);
+  putChart(drawBarChart(`${unit} per day`, dayItems, { w: 920, h: 300 }), 920, 300);
+  tblHead('Date', unit);
+  dayItems.forEach(it => A([it.label, it.value, cellBar(it.value, maxOf(dayItems))]));
+  A([]);
+  // 2) department-wise
+  const aggD = {}; rows.forEach(p => { const k = p.department_name || '—'; aggD[k] = (aggD[k] || 0) + 1; });
+  const dpt = Object.entries(aggD).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }));
+  head(`🏭 DEPARTMENT-WISE ${f.kind === 'employee' ? 'PASSES ISSUED' : 'VISITORS RECEIVED'}`);
+  const dh = Math.max(230, 70 + dpt.length * 34);
+  putChart(drawBarChart(`Department-wise ${unit.toLowerCase()}`, dpt.slice(0, 12), { horizontal: true, bar: '#2e7d32', h: dh }), 900, dh);
+  tblHead('Department', unit);
+  dpt.forEach(it => A([it.label, it.value, cellBar(it.value, maxOf(dpt))]));
+  A([]);
+  // 3) status split
+  const aggS = {}; rows.forEach(p => { const k = STATUS[p.status] ? STATUS[p.status][0] : p.status; aggS[k] = (aggS[k] || 0) + 1; });
+  const sItems = Object.entries(aggS).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }));
+  head('📊 STATUS SPLIT');
+  const sh = Math.max(210, 70 + sItems.length * 34);
+  putChart(drawBarChart('Status split', sItems, { horizontal: true, bar: '#b26a00', h: sh }), 900, sh);
+  tblHead('Status', 'Count');
+  sItems.forEach(it => A([it.label, it.value, cellBar(it.value, maxOf(sItems))]));
+  // 4) visitors: most-visited people table
+  if (f.kind === 'visitors') {
+    const aggH = {}; rows.forEach(p => { const k = p.person_to_visit || '—'; aggH[k] = (aggH[k] || 0) + 1; });
+    const hosts = Object.entries(aggH).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    if (hosts.length) {
+      A([]); head('👤 MOST-VISITED PEOPLE (TOP ' + hosts.length + ')');
+      const r = ws.addRow(['Person', 'Times visited']); r.eachCell(c => { c.font = { bold: true }; }); cur++;
+      hosts.forEach(([k, v]) => A([k, v]));
+    }
+  }
+  [22, 12, 26, 12, 12, 12, 12, 12].forEach((wd, i) => ws.getColumn(i + 1).width = wd);
 }
 
 async function exportExcel(f, rows) {
@@ -1318,6 +1436,7 @@ async function exportExcel(f, rows) {
   Object.keys(agg).sort().forEach(d => { const r = ws2.addRow([d, agg[d].total, agg[d].trips, agg[d].mins]); r.eachCell(c => c.border = border); });
   const tr = ws2.addRow(['ALL DEPARTMENTS', ...['total', 'trips', 'mins'].map(k => Object.values(agg).reduce((a, x) => a + x[k], 0))]);
   tr.font = { bold: true }; tr.eachCell(c => c.border = border);
+  addDashSheet(wb, f, rows);
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
