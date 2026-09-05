@@ -95,7 +95,7 @@ const APP_NAME = 'Factory Gate Pass Manager';
 const MADE_BY = 'Made by Shivam';
 /* VERSION → shown on the login page + under the sidebar name.
    Bump it with every new ZIP (e.g. v26.08.27) so you can SEE the update live. */
-const APP_VERSION = 'v26.08.27h';
+const APP_VERSION = 'v26.08.27i';
 
 const STATUS = {
   PENDING_HOD: ['Pending Dept Head', 'b-amber'], PENDING_HR: ['Pending HR', 'b-blue'],
@@ -271,7 +271,7 @@ function frame(title) {
         </div>
       </header>
       <div class="content" id="content"></div>
-      <footer class="foot">${esc(APP_NAME)} · data auto-deleted after ${SETTINGS.retention_days} days${MADE_BY ? ` <span class="footcredit">👤 ${esc(MADE_BY)}</span>` : ''}</footer>
+      <footer class="foot">${esc(APP_NAME)}${me.role === 'admin' ? ` · data auto-deleted after ${SETTINGS.retention_days} days` : ''}${MADE_BY ? ` <span class="footcredit">👤 ${esc(MADE_BY)}</span>` : ''}</footer>
     </main>
   </div>`;
   const nav = document.getElementById('nav');
